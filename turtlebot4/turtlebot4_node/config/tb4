@@ -67,6 +67,7 @@ Usage:
   tb4 reverse_test
   tb4 cat <remote_file_path>
   tb4 scp
+  tb4 copyme
   tb4 square [side_m] [speed_mps]
 
 Examples:
@@ -125,6 +126,7 @@ Examples:
   tb4 reverse_test
   tb4 cat /opt/ros/jazzy/share/turtlebot4_bringup/config/oakd_pro.yaml
   tb4 scp
+  tb4 copyme
 
 Setup: 
   mkdir -p ~/bin
@@ -244,11 +246,11 @@ map_save_cmd() {
 }
 
 joystick_cmd() {
-  ros2 run joy_linux joy_linux_node --ros-args --params-file ~/bin/joy_linux.yaml -r /joy:=/teleop_joy
+  ssh -t ubuntu@turtlebot4 'source /opt/ros/jazzy/setup.bash && source /etc/turtlebot4/setup.bash && ros2 run joy_linux joy_linux_node --ros-args --params-file ~/bin/joy_linux.yaml -r /joy:=/teleop_joy'
 }
 
 teleop_cmd() {
-  ros2 run teleop_twist_joy teleop_node --ros-args --params-file ~/bin/teleop_ps4.yaml -r /joy:=/teleop_joy
+  ssh -t ubuntu@turtlebot4 'source /opt/ros/jazzy/setup.bash && source /etc/turtlebot4/setup.bash && ros2 run teleop_twist_joy teleop_node --ros-args --params-file ~/bin/teleop_ps4.yaml -r /joy:=/teleop_joy'
 }
 
 wait_for_tf_cmd() {
@@ -681,6 +683,11 @@ scp_cmd() {
   scp "$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/teleop_ps4.yaml" ubuntu@turtlebot4:~/bin/
 }
 
+copyme_cmd() {
+  cp "$HOME/bin/tb4" /home/qd/turtlebot4_ws/src/turtlebot4/turtlebot4_node/config/tb4
+  scp "$HOME/bin/tb4" ubuntu@turtlebot4:/home/ubuntu/bin/tb4
+}
+
 square_cmd() {
   local side="${1:-0.5}"
   local speed="${2:-0.1}"
@@ -904,6 +911,10 @@ case "${1:-}" in
   scp)
     shift
     scp_cmd "$@"
+    ;;
+  copyme)
+    shift
+    copyme_cmd "$@"
     ;;
   square)
     shift
