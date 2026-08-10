@@ -1,0 +1,921 @@
+#!/usr/bin/env bash
+set -e
+
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Error: required command '$1' not found."
+    exit 1
+  }
+}
+
+deg_to_rad() {
+  echo "$1 * 3.141592653589793 / 180" | bc -l
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  tb4 undock
+  tb4 dock
+  tb4 fwd [distance_m] [speed_mps]
+  tb4 back [distance_m] [speed_mps]
+  tb4 turn [degrees] [max_rotation_speed]
+  tb4 stop
+  tb4 stop svc
+  tb4 estop on|off
+  tb4 start svc
+  tb4 restart
+  tb4 reboot create3
+  tb4 status
+  tb4 login
+  tb4 off
+  tb4 localize [map_yaml]
+  tb4 localize onboard
+  tb4 map
+  tb4 map save
+  tb4 joy
+  tb4 teleop
+  tb4 nav2
+  tb4 nav2 onboard
+  tb4 nav2_diag
+  tb4 deploy plugins
+  tb4 deploy onboard [full]
+  tb4 onboard up
+  tb4 onboard down
+  tb4 onboard logs [errors|list|<node>]
+  tb4 alive
+  tb4 viz
+  tb4 viz lite
+  tb4 yolo
+  tb4 yolo viz
+  tb4 fusion
+  tb4 fusion viz
+  tb4 bbox
+  tb4 bbox viz
+  tb4 bbox yolo-viz
+  tb4 bbox fusion-viz
+  tb4 rgb_cam_rate
+  tb4 bbox_rate
+  tb4 depth_cam_rate
+  tb4 robot_depth_cam_rate
+  tb4 pointcloud_topic
+  tb4 cam_info_topic
+  tb4 obstacles
+  tb4 battery
+  tb4 clicked_point
+  tb4 scan_rate
+  tb4 reverse_test
+  tb4 cat <remote_file_path>
+  tb4 scp
+  tb4 square [side_m] [speed_mps]
+
+Examples:
+  tb4 undock
+  tb4 fwd 0.508 0.08
+  tb4 back 0.25 0.08
+  tb4 turn 90 1.0
+  tb4 turn -90 1.0
+  tb4 stop
+  tb4 stop svc
+  tb4 estop on
+  tb4 estop off
+  tb4 start svc
+  tb4 restart
+  tb4 dock
+  tb4 square 0.5 0.08
+  tb4 reboot create3
+  tb4 status
+  tb4 login
+  tb4 off
+  tb4 localize
+  tb4 localize onboard
+  tb4 map
+  tb4 map save
+  tb4 joy
+  tb4 teleop
+  tb4 nav2
+  tb4 nav2 onboard
+  tb4 nav2_diag
+  tb4 deploy plugins
+  tb4 deploy onboard full
+  tb4 onboard up
+  tb4 onboard down
+  tb4 onboard logs [errors|list|<node>]
+  tb4 alive
+  tb4 viz
+  tb4 viz lite
+  tb4 yolo
+  tb4 yolo viz
+  tb4 fusion
+  tb4 fusion viz
+  tb4 bbox
+  tb4 bbox viz
+  tb4 bbox yolo-viz
+  tb4 bbox fusion-viz
+  tb4 rgb_cam_rate
+  tb4 bbox_rate
+  tb4 depth_cam_rate
+  tb4 robot_depth_cam_rate
+  tb4 pointcloud_topic
+  tb4 cam_info_topic
+  tb4 obstacles
+  tb4 battery
+  tb4 clicked_point
+  tb4 scan_rate
+  tb4 reverse_test
+  tb4 cat /opt/ros/jazzy/share/turtlebot4_bringup/config/oakd_pro.yaml
+  tb4 scp
+
+Setup: 
+  mkdir -p ~/bin
+  cp ~/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/tb4 ~/bin/tb4
+  chmod +x ~/bin/tb4
+  echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+  source ~/.bashrc
+
+EOF
+}
+
+dock_cmd() {
+  ros2 action send_goal /dock irobot_create_msgs/action/Dock
+}
+
+undock_cmd() {
+  ros2 action send_goal /undock irobot_create_msgs/action/Undock
+}
+
+fwd_cmd() {
+  local dist="${1:-0.5}"
+  local speed="${2:-0.1}"
+  if [[ "$speed" == -* ]]; then
+    speed="${speed#-}"
+  fi
+  echo "Driving forward: distance=${dist} m, speed=${speed} m/s"
+  ros2 action send_goal /drive_distance irobot_create_msgs/action/DriveDistance \
+    "{distance: $dist, max_translation_speed: $speed}"
+}
+
+back_cmd() {
+  local dist="${1:-0.5}"
+  local speed="${2:-0.1}"
+  if [[ "$speed" == -* ]]; then
+    speed="${speed#-}"
+  fi
+  echo "Driving backward: distance=${dist} m, speed=${speed} m/s"
+  ros2 action send_goal /drive_distance irobot_create_msgs/action/DriveDistance \
+    "{distance: -$dist, max_translation_speed: $speed}"
+}
+
+turn_cmd() {
+  local deg="${1:-90}"
+  local speed="${2:-1.0}"
+  local rad
+  need_cmd bc
+  rad="$(deg_to_rad "$deg")"
+  echo "Turning: degrees=${deg}, radians=${rad}, speed=${speed}"
+  ros2 action send_goal /rotate_angle irobot_create_msgs/action/RotateAngle \
+    "{angle: $rad, max_rotation_speed: $speed}"
+}
+
+stop_cmd() {
+  ros2 topic pub --once /cmd_vel geometry_msgs/msg/TwistStamped \
+    "{header: {frame_id: 'base_link'}, twist: {linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}}"
+}
+
+estop_cmd() {
+  case "${1:-}" in
+    on)
+      ros2 service call /e_stop irobot_create_msgs/srv/EStop "{e_stop_on: true}"
+      ;;
+    off)
+      ros2 service call /e_stop irobot_create_msgs/srv/EStop "{e_stop_on: false}"
+      ;;
+    *)
+      echo "Usage: tb4 estop on|off"
+      exit 1
+      ;;
+  esac
+}
+
+stop_svc_cmd() {
+  echo "Stopping turtlebot4 service..."
+  ssh -t ubuntu@turtlebot4 'sudo systemctl stop turtlebot4.service'
+}
+
+start_svc_cmd() {
+  ssh -t ubuntu@turtlebot4 'sudo systemctl start turtlebot4.service'
+}
+
+restart_cmd() {
+  ssh -t ubuntu@turtlebot4 'sudo systemctl restart turtlebot4.service'
+}
+
+reboot_create3_cmd() {
+  local sock="/tmp/tb4_create3_${$}.sock"
+  # Use a temporary local tunnel to reach Create3 web API via turtlebot4.
+  ssh -f -N -M -S "$sock" -L 8080:192.168.186.2:80 ubuntu@turtlebot4
+  curl -X POST http://localhost:8080/api/reboot
+  ssh -S "$sock" -O exit ubuntu@turtlebot4 >/dev/null 2>&1 || true
+}
+
+status_cmd() {
+  ssh -t ubuntu@turtlebot4 'systemctl status turtlebot4.service'
+}
+
+login_cmd() {
+  ssh ubuntu@turtlebot4
+}
+
+off_cmd() {
+  ros2 service call /robot_power irobot_create_msgs/srv/RobotPower "{}"
+}
+
+localize_cmd() {
+  local map="${1:-$HOME/turtlebot4_ws/map_101.yaml}"
+  ros2 launch turtlebot4_navigation localization.launch.py map:="$map"
+}
+
+map_cmd() {
+  ros2 launch turtlebot4_navigation slam.launch.py params:=/home/qd/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/slam.yaml
+}
+
+map_save_cmd() {
+  ros2 run nav2_map_server map_saver_cli -f /home/qd/turtlebot4_ws/map_101 --ros-args -p map_subscribe_transient_local:=true -r __ns:=/
+}
+
+joystick_cmd() {
+  ros2 run joy_linux joy_linux_node --ros-args --params-file ~/bin/joy_linux.yaml -r /joy:=/teleop_joy
+}
+
+teleop_cmd() {
+  ros2 run teleop_twist_joy teleop_node --ros-args --params-file ~/bin/teleop_ps4.yaml -r /joy:=/teleop_joy
+}
+
+wait_for_tf_cmd() {
+  local from_frame="$1"
+  local to_frame="$2"
+  local timeout_s="${3:-30}"
+  local deadline=$((SECONDS + timeout_s))
+
+  while (( SECONDS < deadline )); do
+    if timeout 2 ros2 run tf2_ros tf2_echo "$from_frame" "$to_frame" 2>/dev/null | grep -q "Translation:"; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  return 1
+}
+
+nav2_cmd() {
+  local params_file="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/nav2.yaml"
+  ros2 launch turtlebot4_navigation nav2.launch.py params_file:="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/nav2.yaml"
+}
+
+# --- Onboard Nav2 (run localization + nav2 on the robot's Pi) ---------------
+# Robot paths: overlay ws = ~/tb4_overlay_ws (bt plugins), config = ~/tb4_cfg.
+
+deploy_plugins_cmd() {
+  # Nav2 runs onboard the robot (Pi). It must load two custom overlay packages:
+  #   - turtlebot4_bt_plugins : behavior-tree action/condition nodes
+  #   - tb4_perception_layer  : semantic costmap layer + SemanticObstacle msgs
+  # The perception layer is enabled in nav2.yaml and subscribes to
+  # /semantic_obstacles published by the fusion node on the UserPC, so BOTH the
+  # plugin .so AND the message typesupport must be built/installed on the Pi.
+  local pkgs=(
+    "$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_bt_plugins"
+    "$HOME/turtlebot4_ws/src/tb4_perception_layer"
+  )
+  echo "Deploying Nav2 overlay packages to robot (bt plugins + perception layer)..."
+  ssh ubuntu@turtlebot4 'mkdir -p ~/tb4_overlay_ws/src'
+  local src name
+  for src in "${pkgs[@]}"; do
+    name="$(basename "$src")"
+    echo "  -> $name"
+    ssh ubuntu@turtlebot4 "rm -rf ~/tb4_overlay_ws/src/$name"
+    scp -r "$src" ubuntu@turtlebot4:'~/tb4_overlay_ws/src/'
+  done
+  echo "Building overlay on robot (this may take a few minutes)..."
+  ssh -t ubuntu@turtlebot4 'source /opt/ros/jazzy/setup.bash && cd ~/tb4_overlay_ws && colcon build --packages-select turtlebot4_bt_plugins tb4_perception_layer'
+}
+
+deploy_onboard_cmd() {
+  local mode="${1:-}"
+  local cfg_src="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config"
+  local bt_src="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/behavior_trees"
+  local launch_src="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/launch"
+  local tmp_nav2="/tmp/nav2_pi.yaml"
+
+  echo "Generating nav2_pi.yaml (rewrite BT paths to ~/tb4_cfg, disable MPPI visualize)..."
+  sed -e 's#/home/qd/turtlebot4_ws/install/turtlebot4_navigation/share/turtlebot4_navigation/behavior_trees/#/home/ubuntu/tb4_cfg/behavior_trees/#g' \
+      -e 's/visualize: true/visualize: false/' \
+      "$cfg_src/nav2.yaml" > "$tmp_nav2"
+
+  echo "Creating remote config dirs..."
+  ssh ubuntu@turtlebot4 'mkdir -p ~/tb4_cfg/behavior_trees ~/tb4_cfg/maps'
+
+  echo "Copying nav2_pi.yaml, localization.yaml, behavior trees, no-docking launch..."
+  scp "$tmp_nav2" ubuntu@turtlebot4:'~/tb4_cfg/nav2_pi.yaml'
+  scp "$cfg_src/localization.yaml" ubuntu@turtlebot4:'~/tb4_cfg/localization.yaml'
+  scp "$bt_src/"*.xml ubuntu@turtlebot4:'~/tb4_cfg/behavior_trees/'
+  scp "$launch_src/navigation_no_docking.launch.py" ubuntu@turtlebot4:'~/tb4_cfg/navigation_no_docking.launch.py'
+
+  if [ "$mode" = "full" ]; then
+    echo "Copying map_101..."
+    scp "$HOME/turtlebot4_ws/map_101.yaml" "$HOME/turtlebot4_ws/map_101.pgm" \
+      ubuntu@turtlebot4:'~/tb4_cfg/maps/'
+  fi
+
+  rm -f "$tmp_nav2"
+
+  # nav2.yaml enables tb4_perception_layer, which onboard nav2 loads from the
+  # robot overlay (~/tb4_overlay_ws). Verify it is present so the costmap does
+  # not fail to bring up when 'tb4 onboard up' runs.
+  echo "Verifying perception layer overlay on robot..."
+  if ssh ubuntu@turtlebot4 'test -d ~/tb4_overlay_ws/install/tb4_perception_layer'; then
+    echo "  OK: tb4_perception_layer is built in the robot overlay."
+  else
+    echo "  WARN: tb4_perception_layer is NOT built on the robot overlay."
+    echo "        nav2.yaml enables perception_layer, so onboard nav2 must load it."
+    echo "        Run 'tb4 deploy plugins' before 'tb4 onboard up'."
+  fi
+
+  echo
+  echo "Done. Onboard Nav2 will subscribe to /semantic_obstacles."
+  echo "Perception runs on the UserPC:  tb4 yolo   and   tb4 fusion"
+  echo "Then start navigation onboard:  tb4 onboard up"
+  echo "(RViz on the UserPC: tb4 viz)"
+}
+
+localize_onboard_cmd() {
+  ssh -t ubuntu@turtlebot4 'source /opt/ros/jazzy/setup.bash && source /etc/turtlebot4/setup.bash && ros2 launch turtlebot4_navigation localization.launch.py map:="$HOME/tb4_cfg/maps/map_101.yaml" params:="$HOME/tb4_cfg/localization.yaml"'
+}
+
+nav2_onboard_cmd() {
+  ssh -t ubuntu@turtlebot4 'source /opt/ros/jazzy/setup.bash && source /etc/turtlebot4/setup.bash && source "$HOME/tb4_overlay_ws/install/setup.bash" && ros2 launch "$HOME/tb4_cfg/navigation_no_docking.launch.py" params_file:="$HOME/tb4_cfg/nav2_pi.yaml"'
+}
+
+onboard_up_cmd() {
+  # Single terminal: start localization (background) then nav2 (foreground) on
+  # the Pi, in one SSH session. Ctrl-C tears down both via the remote trap.
+  local remote_script
+  remote_script="$(cat <<'REMOTE'
+#!/usr/bin/env bash
+source /opt/ros/jazzy/setup.bash
+source /etc/turtlebot4/setup.bash
+source "$HOME/tb4_overlay_ws/install/setup.bash"
+
+LOCALIZE_PID=""
+cleanup() {
+  echo "[onboard up] shutting down localization + nav2..."
+  [ -n "$LOCALIZE_PID" ] && kill "$LOCALIZE_PID" 2>/dev/null || true
+  pkill -f "localization.launch.py" 2>/dev/null || true
+  pkill -f "nav2.launch.py" 2>/dev/null || true
+  pkill -f "navigation_no_docking.launch.py" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM HUP
+
+# Pre-flight: kill any stale localization/nav2 processes left over from a
+# previously Ctrl-C'd 'tb4 onboard up'. Orphans survive when the SSH trap does
+# not propagate, and a second copy of each node starves the Pi and collides on
+# DDS names -> lifecycle 'get_state' timeouts and aborted bringup.
+STALE_PROCS="controller_server|smoother_server|planner_server|behavior_server|bt_navigator|waypoint_follower|velocity_smoother|collision_monitor|lifecycle_manager|amcl|map_server|localization.launch.py|navigation_no_docking.launch.py|nav2.launch.py"
+if pgrep -f "$STALE_PROCS" >/dev/null 2>&1; then
+  echo "[onboard up] cleaning up stale localization/nav2 processes..."
+  pkill -f "$STALE_PROCS" 2>/dev/null || true
+  sleep 3
+fi
+
+# Disable the Create 3's motion-control reflexes (cliff/wheel-drop/backup limit)
+# so Nav2 recovery (e.g. blind reverse) is not blocked by the base. Must be the
+# first ros2 action so it takes effect before navigation starts.
+echo "[onboard up] setting Create 3 safety_override=full..."
+ros2 param set --include-hidden-nodes /_do_not_use/motion_control safety_override full \
+  || echo "[onboard up] WARN: failed to set safety_override (continuing)."
+
+echo "[onboard up] starting localization..."
+ros2 launch nav2_bringup localization_launch.py \
+  map:="$HOME/tb4_cfg/maps/map_101.yaml" \
+  params_file:="$HOME/tb4_cfg/localization.yaml" \
+  autostart:=false &
+LOCALIZE_PID=$!
+
+wait_for_lifecycle_node() {
+  local node="$1"
+  local waited=0
+  while ! timeout 8 ros2 lifecycle get "$node" >/dev/null 2>&1; do
+    waited=$((waited + 2))
+    if [ "$waited" -ge 60 ]; then
+      echo "[onboard up] ERROR: lifecycle node $node did not appear." >&2
+      return 1
+    fi
+    sleep 2
+  done
+}
+
+set_lifecycle_state() {
+  local node="$1"
+  local state="$2"
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if timeout 20 ros2 lifecycle set "$node" "$state"; then
+      return 0
+    fi
+    echo "[onboard up] WARN: failed to set $node -> $state (attempt $attempt/5)."
+    sleep 2
+  done
+  echo "[onboard up] ERROR: failed to set $node -> $state." >&2
+  return 1
+}
+
+wait_for_lifecycle_node /map_server || exit 1
+wait_for_lifecycle_node /amcl || exit 1
+set_lifecycle_state /map_server configure || exit 1
+set_lifecycle_state /amcl configure || exit 1
+set_lifecycle_state /map_server activate || exit 1
+set_lifecycle_state /amcl activate || exit 1
+
+# AMCL auto-localizes at the dock and publishes map->odom after it processes
+# lidar scans. Nav2's global_costmap has a 60s activation timeout, so nav2 MUST
+# NOT start before map->odom exists. Wait until it does.
+echo
+echo "==================================================================="
+echo "[onboard up] Localization is active."
+echo "             Waiting for map->odom transform before starting nav2..."
+echo "==================================================================="
+WAIT_MAX=600
+SECONDS=0
+next_msg=10
+while true; do
+  # Each fresh tf2_echo node needs several seconds to spin up, discover the
+  # FastDDS server and fill its TF buffer on the Pi, so allow up to 12s per
+  # attempt (a 2s timeout kills it before map->odom is ever seen even when the
+  # transform exists).
+  if timeout 12 ros2 run tf2_ros tf2_echo map odom 2>/dev/null | grep -q "Translation:"; then
+    echo "[onboard up] map->odom TF available; starting nav2."
+    break
+  fi
+  if [ "$SECONDS" -ge "$WAIT_MAX" ]; then
+    echo "[onboard up] ERROR: map->odom not available after ${WAIT_MAX}s." >&2
+    echo "[onboard up] AMCL auto-localizes at the dock; if the robot isn't" >&2
+    echo "[onboard up] docked, set a 2D Pose Estimate in RViz, then rerun. Aborting." >&2
+    exit 1
+  fi
+  if [ "$SECONDS" -ge "$next_msg" ]; then
+    echo "[onboard up] still waiting for map->odom (${SECONDS}s)..."
+    next_msg=$((SECONDS + 10))
+  fi
+  sleep 1
+done
+
+ros2 launch "$HOME/tb4_cfg/navigation_no_docking.launch.py" \
+  params_file:="$HOME/tb4_cfg/nav2_pi.yaml"
+REMOTE
+)"
+
+  printf '%s\n' "$remote_script" | ssh ubuntu@turtlebot4 'cat > /tmp/tb4_onboard_up.sh'
+  ssh -t ubuntu@turtlebot4 'bash /tmp/tb4_onboard_up.sh'
+}
+
+onboard_down_cmd() {
+  # Kill any localization/nav2 processes on the robot. Use this to clean up
+  # after a Ctrl-C'd 'tb4 onboard up' that left orphaned nodes behind.
+  local stale_procs="controller_server|smoother_server|planner_server|behavior_server|bt_navigator|waypoint_follower|velocity_smoother|collision_monitor|lifecycle_manager|amcl|map_server|localization.launch.py|navigation_no_docking.launch.py|nav2.launch.py"
+  echo "Stopping onboard localization + nav2 on the robot..."
+  ssh ubuntu@turtlebot4 "pkill -f '$stale_procs' 2>/dev/null; sleep 2; \
+    source /opt/ros/jazzy/setup.bash 2>/dev/null; \
+    echo '--- remaining ROS nodes ---'; ros2 node list 2>/dev/null || true"
+  echo "Done."
+}
+
+onboard_logs_cmd() {
+  # Read the nav2/localization launch logs on the Pi (~/.ros/log).
+  #   tb4 onboard logs            follow the newest launch's launch.log
+  #   tb4 onboard logs errors     follow it, filtered to WARN|ERROR
+  #   tb4 onboard logs list       list recent launch directories
+  #   tb4 onboard logs <node>     follow it, filtered to a node (e.g. controller_server)
+  local sub="${1:-}"
+  # Newest launch dir on the Pi; 'latest' symlink is a reliable shortcut.
+  local newest='D="$HOME/.ros/log/latest"; [ -d "$D" ] || D="$(ls -dt "$HOME"/.ros/log/*/ 2>/dev/null | head -1)"'
+  case "$sub" in
+    list)
+      ssh ubuntu@turtlebot4 'ls -dt "$HOME"/.ros/log/*/ 2>/dev/null | head -20'
+      ;;
+    errors|error|--errors)
+      echo "Following newest launch.log (WARN|ERROR) on the robot — Ctrl-C to stop."
+      ssh -t ubuntu@turtlebot4 "$newest; tail -n 200 -f \"\$D/launch.log\" | grep --line-buffered -E 'WARN|ERROR|Aborting|collision|progress'"
+      ;;
+    "")
+      echo "Following newest launch.log on the robot — Ctrl-C to stop."
+      ssh -t ubuntu@turtlebot4 "$newest; tail -n 200 -f \"\$D/launch.log\""
+      ;;
+    *)
+      echo "Following newest launch.log filtered to '$sub' — Ctrl-C to stop."
+      ssh -t ubuntu@turtlebot4 "$newest; tail -n 500 -f \"\$D/launch.log\" | grep --line-buffered -F '$sub'"
+      ;;
+  esac
+}
+
+alive_cmd() {
+  ros2 launch tb4_perception tf_keepalive.launch.py "$@"
+}
+
+nav2_diag_cmd() {
+  echo "=== Nav2 motion diagnostics (run while a goal is active) ==="
+
+  echo
+  echo "[1/6] Checking command topics"
+  ros2 topic list | grep -E '^/cmd_vel_nav$|^/cmd_vel_smoothed$|^/cmd_vel_stamped$|^/cmd_vel$' || true
+
+  echo
+  echo "[2/6] Command topic type / publisher count"
+  ros2 topic info /cmd_vel || true
+  ros2 topic info /cmd_vel_nav || true
+  ros2 topic info /cmd_vel_smoothed || true
+  ros2 topic info /cmd_vel_stamped || true
+
+  echo
+  echo "[3/6] Sample command from controller path"
+  timeout 4 ros2 topic echo /cmd_vel --once || true
+  timeout 4 ros2 topic echo /cmd_vel_nav --once || true
+  timeout 4 ros2 topic echo /cmd_vel_smoothed --once || true
+  timeout 4 ros2 topic echo /cmd_vel_stamped --once || true
+
+  echo
+  echo "[4/6] Collision monitor state"
+  timeout 4 ros2 topic echo /collision_monitor_state --once || true
+
+  echo
+  echo "[5/6] Wheel / stop state"
+  timeout 4 ros2 topic echo /wheel_status --once || true
+  timeout 4 ros2 topic echo /stop_status --once || true
+
+  echo
+  echo "[6/6] E-stop service availability"
+  ros2 service list | grep -E '^/e_stop$' || true
+}
+
+viz_cmd() {
+  ros2 launch turtlebot4_viz view_navigation.launch.py
+}
+
+viz_lite_cmd() {
+  local rviz_config="$HOME/turtlebot4_ws/src/turtlebot4_desktop/turtlebot4_viz/rviz/navigation_lite.rviz"
+  ros2 run rviz2 rviz2 -d "$rviz_config"
+}
+
+
+yolo_cmd() {
+  if [ "${1:-}" = "viz" ]; then
+    ros2 launch tb4_perception yolo_detector.launch.py publish_visualisation:=true
+  else
+    ros2 launch tb4_perception yolo_detector.launch.py publish_visualisation:=false
+  fi
+}
+
+fusion_cmd() {
+  local params_file="$HOME/turtlebot4_ws/src/tb4_perception_integration/config/fusion_params.yaml"
+  if [ "${1:-}" = "viz" ]; then
+    ros2 launch tb4_perception_integration perception_integration.launch.py params_file:="$params_file" publish_debug_markers:=true
+  else
+    ros2 launch tb4_perception_integration perception_integration.launch.py params_file:="$params_file"
+  fi
+}
+
+bbox_cmd() {
+  # Start the YOLO detector node and the camera-LiDAR fusion node together.
+  #   tb4 bbox                          -> both nodes, no visualisation
+  #   tb4 bbox viz                      -> both nodes with visualisation/debug markers
+  #   tb4 bbox yolo-viz                 -> only YOLO visualisation enabled
+  #   tb4 bbox fusion-viz               -> only fusion debug markers enabled
+  #   tb4 bbox yolo-viz fusion-viz      -> same as 'viz'
+  local yolo_arg="" fusion_arg=""
+  for arg in "$@"; do
+    case "$arg" in
+      viz)         yolo_arg="viz"; fusion_arg="viz" ;;
+      yolo-viz)    yolo_arg="viz" ;;
+      fusion-viz)  fusion_arg="viz" ;;
+      *)
+        echo "Unknown bbox option: '$arg' (use: viz | yolo-viz | fusion-viz)"
+        exit 1
+        ;;
+    esac
+  done
+
+  local pids=()
+  cleanup() {
+    kill "${pids[@]}" 2>/dev/null || true
+    wait "${pids[@]}" 2>/dev/null || true
+  }
+  trap cleanup INT TERM EXIT
+
+  yolo_cmd "$yolo_arg" &
+  pids+=("$!")
+
+  fusion_cmd "$fusion_arg" &
+  pids+=("$!")
+
+  # Exit as soon as either node stops, then clean up the other.
+  wait -n "${pids[@]}"
+}
+
+rgb_cam_rate_cmd() {
+  timeout 8 ros2 topic hz /oakd/rgb/preview/image_raw --window 10
+}
+
+bbox_rate_cmd() {
+  timeout 8 ros2 topic hz /detections --window 10
+}
+
+depth_cam_rate_cmd() {
+  timeout 8 ros2 topic hz /oakd/stereo/image_raw --window 10
+}
+
+robot_depth_cam_rate_cmd() {
+  ssh -t ubuntu@turtlebot4 "export RMW_IMPLEMENTATION=rmw_fastrtps_cpp && export FASTRTPS_DEFAULT_PROFILES_FILE=/etc/turtlebot4/fastdds_rpi.xml && source /etc/turtlebot4/setup.bash && timeout 30 ros2 topic hz /oakd/stereo/image_raw --window 10 2>&1"
+}
+
+pointcloud_topic_cmd() {
+  timeout 8 ros2 topic hz /oakd/stereo/points --window 10
+}
+
+cam_info_topic_cmd() {
+  timeout 8 ros2 topic hz /oakd/stereo/camera_info --window 10
+}
+
+obstacles_cmd() {
+  timeout 8 ros2 topic hz /semantic_obstacles --window 10
+}
+
+battery_cmd() {
+  ros2 topic echo /battery_state --once 2>&1 | head -10
+}
+
+clicked_point_cmd() {
+  ros2 topic echo /clicked_point
+}
+
+scan_rate_cmd() {
+  timeout 8 ros2 topic hz /scan --window 10
+  ros2 topic echo /scan --once
+}
+
+reverse_test_cmd() {
+  echo "-- Reverse test (0.8 m @ 0.1 m/s) --"
+  ros2 action send_goal /drive_distance irobot_create_msgs/action/DriveDistance "{distance: -0.8, max_translation_speed: 0.1}"
+}
+
+cat_cmd() {
+  local file="$1"
+  if [ -z "$file" ]; then
+    echo "Error: no file path specified."
+    echo "Usage: tb4 cat <remote_file_path>"
+    exit 1
+  fi
+  ssh -t ubuntu@turtlebot4 "cat '$file'"
+}
+
+scp_cmd() {
+  scp "$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/tb4" ubuntu@turtlebot4:~/bin/tb4
+  scp "$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/joy_linux.yaml" ubuntu@turtlebot4:~/bin/
+  scp "$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/teleop_ps4.yaml" ubuntu@turtlebot4:~/bin/
+}
+
+square_cmd() {
+  local side="${1:-0.5}"
+  local speed="${2:-0.1}"
+  local i
+  for i in 1 2 3 4; do
+    fwd_cmd "$side" "$speed"
+    turn_cmd 90 1.0
+  done
+}
+
+case "${1:-}" in
+  dock)
+    shift
+    dock_cmd "$@"
+    ;;
+  undock)
+    shift
+    undock_cmd "$@"
+    ;;
+  fwd)
+    shift
+    fwd_cmd "$@"
+    ;;
+  back)
+    shift
+    back_cmd "$@"
+    ;;
+  turn)
+    shift
+    turn_cmd "$@"
+    ;;
+  stop)
+    shift
+    case "${1:-}" in
+      svc) shift; stop_svc_cmd "$@" ;;
+      *) stop_cmd "$@" ;;
+    esac
+    ;;
+  estop)
+    shift
+    estop_cmd "$@"
+    ;;
+  start)
+    shift
+    case "${1:-}" in
+      svc) shift; start_svc_cmd "$@" ;;
+      *) echo "Unknown start subcommand: ${1:-}"; echo "Usage: tb4 start svc"; exit 1 ;;
+    esac
+    ;;
+  restart)
+    shift
+    restart_cmd "$@"
+    ;;
+  reboot)
+    shift
+    case "${1:-}" in
+      create3)
+        shift
+        reboot_create3_cmd "$@"
+        ;;
+      *)
+        echo "Unknown reboot subcommand: ${1:-}"
+        echo "Usage: tb4 reboot create3"
+        exit 1
+        ;;
+    esac
+    ;;
+  login)
+    shift
+    login_cmd "$@"
+    ;;
+  status)
+    shift
+    status_cmd "$@"
+    ;;
+  off)
+    shift
+    off_cmd "$@"
+    ;;
+  localize)
+    shift
+    case "${1:-}" in
+      onboard) shift; localize_onboard_cmd "$@" ;;
+      *) localize_cmd "$@" ;;
+    esac
+    ;;
+  map)
+    shift
+    case "${1:-}" in
+      save)
+        shift
+        map_save_cmd "$@"
+        ;;
+      "")
+        map_cmd "$@"
+        ;;
+      *)
+        echo "Unknown map subcommand: ${1:-}"
+        echo "Usage: tb4 map [save]"
+        exit 1
+        ;;
+    esac
+    ;;
+  joy)
+    shift
+    joystick_cmd "$@"
+    ;;
+  teleop)
+    shift
+    teleop_cmd "$@"
+    ;;
+  nav2)
+    shift
+    case "${1:-}" in
+      onboard) shift; nav2_onboard_cmd "$@" ;;
+      *) nav2_cmd "$@" ;;
+    esac
+    ;;
+  nav2_diag)
+    shift
+    nav2_diag_cmd "$@"
+    ;;
+  deploy)
+    shift
+    case "${1:-}" in
+      plugins) shift; deploy_plugins_cmd "$@" ;;
+      onboard) shift; deploy_onboard_cmd "$@" ;;
+      *) echo "Unknown deploy subcommand: ${1:-}"; echo "Usage: tb4 deploy plugins|onboard [full]"; exit 1 ;;
+    esac
+    ;;
+  onboard)
+    shift
+    case "${1:-}" in
+      up) shift; onboard_up_cmd "$@" ;;
+      down) shift; onboard_down_cmd "$@" ;;
+      logs) shift; onboard_logs_cmd "$@" ;;
+      *) echo "Unknown onboard subcommand: ${1:-}"; echo "Usage: tb4 onboard up|down|logs [errors|list|<node>]"; exit 1 ;;
+    esac
+    ;;
+  alive)
+    shift
+    alive_cmd "$@"
+    ;;
+  viz)
+    shift
+    case "${1:-}" in
+      lite)
+        shift
+        viz_lite_cmd "$@"
+        ;;
+      "")
+        viz_cmd "$@"
+        ;;
+      *)
+        echo "Unknown viz subcommand: ${1:-}"
+        echo "Usage: tb4 viz [lite]"
+        exit 1
+        ;;
+    esac
+    ;;
+  yolo)
+    shift
+    yolo_cmd "$@"
+    ;;
+  fusion)
+    shift
+    fusion_cmd "$@"
+    ;;
+  bbox)
+    shift
+    bbox_cmd "$@"
+    ;;
+  rgb_cam_rate)
+    shift
+    rgb_cam_rate_cmd "$@"
+    ;;
+  bbox_rate)
+    shift
+    bbox_rate_cmd "$@"
+    ;;
+  depth_cam_rate)
+    shift
+    depth_cam_rate_cmd "$@"
+    ;;
+  robot_depth_cam_rate)
+    shift
+    robot_depth_cam_rate_cmd "$@"
+    ;;
+  pointcloud_topic)
+    shift
+    pointcloud_topic_cmd "$@"
+    ;;
+  cam_info_topic)
+    shift
+    cam_info_topic_cmd "$@"
+    ;;
+  obstacles)
+    shift
+    obstacles_cmd "$@"
+    ;;
+  battery)
+    shift
+    battery_cmd "$@"
+    ;;
+  clicked_point)
+    shift
+    clicked_point_cmd "$@"
+    ;;
+  scan_rate)
+    shift
+    scan_rate_cmd "$@"
+    ;;
+  reverse_test)
+    shift
+    reverse_test_cmd "$@"
+    ;;
+  cat)
+    shift
+    cat_cmd "$@"
+    ;;
+  scp)
+    shift
+    scp_cmd "$@"
+    ;;
+  square)
+    shift
+    square_cmd "$@"
+    ;;
+  ""|-h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $1"
+    echo
+    usage
+    exit 1
+    ;;
+esac
