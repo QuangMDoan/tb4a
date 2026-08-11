@@ -23,6 +23,7 @@ Usage:
   tb4 stop
   tb4 stop svc
   tb4 estop on|off
+  tb4 safety [full|backup_only|none]
   tb4 start svc
   tb4 restart
   tb4 reboot create3
@@ -80,6 +81,7 @@ Examples:
   tb4 stop svc
   tb4 estop on
   tb4 estop off
+  tb4 safety full
   tb4 start svc
   tb4 restart
   tb4 dock
@@ -197,6 +199,27 @@ estop_cmd() {
       exit 1
       ;;
   esac
+}
+
+safety_cmd() {
+  # Set the Create 3 base motion-control safety reflexes.
+  #   full        : disable cliff/wheel-drop/backup-limit reflexes (allows
+  #                 blind reverse + Nav2 recovery). Use to let the bot move back.
+  #   backup_only : default; blocks backward motion without safety data.
+  #   none        : re-enable all safety reflexes.
+  local mode="${1:-full}"
+  case "$mode" in
+    full|backup_only|none) ;;
+    *)
+      echo "Usage: tb4 safety [full|backup_only|none]"
+      exit 1
+      ;;
+  esac
+  # The Create 3's /_do_not_use/motion_control hidden node is often not
+  # discoverable from the UserPC over the Wi-Fi discovery server. Run the param
+  # set on the Pi, which has a reliable wired link to the Create 3.
+  echo "Setting Create 3 safety_override=${mode} (via robot)..."
+  ssh -t ubuntu@turtlebot4 "source /opt/ros/jazzy/setup.bash && source /etc/turtlebot4/setup.bash && ros2 param set --include-hidden-nodes /_do_not_use/motion_control safety_override ${mode}"
 }
 
 stop_svc_cmd() {
@@ -729,6 +752,10 @@ case "${1:-}" in
   estop)
     shift
     estop_cmd "$@"
+    ;;
+  safety)
+    shift
+    safety_cmd "$@"
     ;;
   start)
     shift
