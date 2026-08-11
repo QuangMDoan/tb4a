@@ -27,7 +27,7 @@ from launch.actions import (
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
-from launch_ros.actions import PushRosNamespace, SetRemap
+from launch_ros.actions import PushRosNamespace, SetParameter, SetRemap
 
 
 ARGUMENTS = [
@@ -62,6 +62,13 @@ def launch_setup(context, *args, **kwargs):
 
     nav2 = GroupAction([
         PushRosNamespace(namespace),
+        # Running through the Fast DDS Discovery Server on the robot over Wi-Fi
+        # makes endpoint discovery slow during the nav2 bringup burst, so the
+        # lifecycle_manager's default 4.0s bond timeout intermittently fails
+        # (e.g. "smoother_server was unable to be reached after 4.00s by bond").
+        # Raise it so a slow bond handshake does not abort bringup. SetParameter
+        # is launch-scoped and propagates into the included nav2_bringup launch.
+        SetParameter('bond_timeout', 30.0),
         SetRemap(namespace_str + '/global_costmap/scan', namespace_str + '/scan'),
         SetRemap(namespace_str + '/local_costmap/scan', namespace_str + '/scan'),
 
