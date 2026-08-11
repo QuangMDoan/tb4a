@@ -1,0 +1,67 @@
+<!--
+    Navigate to a pose with periodic replanning and recovery actions.
+
+    This variant handles goals placed BEHIND the robot (e.g. via the RViz
+    "Nav2 Goal" button) by rotating in place to face the goal first, instead of
+    reversing or making a wide arc. The IsGoalBehind condition transforms the
+    goal into base_link and, if it is more than `behind_angle` off the nose,
+    outputs the bearing; RotateAngle then calls the Create 3 /rotate_angle
+    action to turn toward it. If the goal is not behind, the rotate step is
+    skipped (AlwaysSuccess) and normal forward navigation runs.
+
+    This tree has no perception (stop-sign) dependency, so it only requires the
+    turtlebot4_bt_plugins library and runs standalone on the UserPC.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+    <BehaviorTree ID="MainTree">
+        <Sequence name="NavigateWithRotate">
+            <Fallback name="RotateIfGoalBehind">
+                <Sequence name="DoRotate">
+                    <IsGoalBehind goal="{goal}" angle="{rotate_angle}" behind_angle="1.57" min_distance="0.2"/>
+                    <RotateAngle angle="{rotate_angle}" max_rotation_speed="1.0"/>
+                </Sequence>
+                <AlwaysSuccess/>
+            </Fallback>
+            <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+                <PipelineSequence name="NavigateWithReplanning">
+                    <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
+                    <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
+                    <RateController hz="1.0">
+                        <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+                            <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+                            <Sequence>
+                                <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                                <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+                            </Sequence>
+                        </RecoveryNode>
+                    </RateController>
+                    <RecoveryNode number_of_retries="1" name="FollowPath">
+                        <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
+                        <Sequence>
+                            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+                        </Sequence>
+                    </RecoveryNode>
+                </PipelineSequence>
+                <Sequence>
+                    <Fallback>
+                        <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                        <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                    </Fallback>
+                    <ReactiveFallback name="RecoveryFallback">
+                        <GoalUpdated/>
+                        <RoundRobin name="RecoveryActions">
+                            <Sequence name="ClearingActions">
+                                <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+                                <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+                            </Sequence>
+                            <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+                            <BackUp backup_dist="0.15" backup_speed="0.05" error_code_id="{backup_error_code}"/>
+                            <Wait wait_duration="5.0"/>
+                        </RoundRobin>
+                    </ReactiveFallback>
+                </Sequence>
+            </RecoveryNode>
+        </Sequence>
+    </BehaviorTree>
+</root>

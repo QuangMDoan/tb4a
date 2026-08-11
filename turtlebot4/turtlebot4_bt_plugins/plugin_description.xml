@@ -1,0 +1,8 @@
+<library path="turtlebot4_bt_plugins">
+    <class name="turtlebot4_bt_plugins/IsGoalBehind" type="turtlebot4_bt_plugins::IsGoalBehindCondition" base_class_type="BT::TreeNode">
+        <description>Condition that checks if the goal is behind the robot and outputs the relative angle.</description>
+    </class>
+    <class name="turtlebot4_bt_plugins/RotateAngle" type="turtlebot4_bt_plugins::RotateAngleAction" base_class_type="BT::TreeNode">
+        <description>Action node that calls the /rotate_angle action server.</description>
+    </class>
+</library>

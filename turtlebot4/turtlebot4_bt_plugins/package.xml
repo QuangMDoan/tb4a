@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+    <name>turtlebot4_bt_plugins</name>
+    <version>0.0.2</version>
+    <description>Behavior Tree plugins for TurtleBot4 Nav2 navigation.</description>
+    <maintainer email="quang.m.doan@gmail.com">qd</maintainer>
+    <license>Apache-2.0</license>
+
+    <buildtool_depend>ament_cmake</buildtool_depend>
+    
+    <depend>rclcpp</depend>
+    <depend>nav2_behavior_tree</depend>
+    <depend>behaviortree_cpp</depend>
+    <depend>tf2_ros</depend>
+    <depend>tf2_geometry_msgs</depend>
+    <depend>geometry_msgs</depend>
+    <depend>irobot_create_msgs</depend>
+    <depend>pluginlib</depend>
+
+    <export>
+        <build_type>ament_cmake</build_type>
+    </export>
+</package>
