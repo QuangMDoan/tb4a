@@ -327,17 +327,13 @@ nav2_cmd() {
 # Robot paths: overlay ws = ~/tb4_overlay_ws (bt plugins), config = ~/tb4_cfg.
 
 deploy_plugins_cmd() {
-  # Nav2 runs onboard the robot (Pi). It must load two custom overlay packages:
-  #   - turtlebot4_bt_plugins : behavior-tree action/condition nodes
-  #   - tb4_perception_layer  : semantic costmap layer + SemanticObstacle msgs
-  # The perception layer is enabled in nav2.yaml and subscribes to
-  # /semantic_obstacles published by the fusion node on the UserPC, so BOTH the
-  # plugin .so AND the message typesupport must be built/installed on the Pi.
+  # Nav2 runs onboard the robot (Pi). It loads one custom overlay package:
+  #   - turtlebot4_bt_plugins : IsGoalBehind + RotateAngle BT nodes used by
+  #     navigate_to_pose_rotate_first.xml (rotate-first; no perception layer).
   local pkgs=(
     "$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_bt_plugins"
-    "$HOME/turtlebot4_ws/src/tb4_perception_layer"
   )
-  echo "Deploying Nav2 overlay packages to robot (bt plugins + perception layer)..."
+  echo "Deploying Nav2 overlay package to robot (bt plugins)..."
   ssh ubuntu@turtlebot4 'mkdir -p ~/tb4_overlay_ws/src'
   local src name
   for src in "${pkgs[@]}"; do
@@ -347,7 +343,7 @@ deploy_plugins_cmd() {
     scp -r "$src" ubuntu@turtlebot4:'~/tb4_overlay_ws/src/'
   done
   echo "Building overlay on robot (this may take a few minutes)..."
-  ssh -t ubuntu@turtlebot4 'source /opt/ros/jazzy/setup.bash && cd ~/tb4_overlay_ws && colcon build --packages-select turtlebot4_bt_plugins tb4_perception_layer'
+  ssh -t ubuntu@turtlebot4 'source /opt/ros/jazzy/setup.bash && cd ~/tb4_overlay_ws && colcon build --packages-select turtlebot4_bt_plugins'
 }
 
 deploy_onboard_cmd() {
@@ -379,22 +375,20 @@ deploy_onboard_cmd() {
 
   rm -f "$tmp_nav2"
 
-  # nav2.yaml enables tb4_perception_layer, which onboard nav2 loads from the
-  # robot overlay (~/tb4_overlay_ws). Verify it is present so the costmap does
-  # not fail to bring up when 'tb4 onboard up' runs.
-  echo "Verifying perception layer overlay on robot..."
-  if ssh ubuntu@turtlebot4 'test -d ~/tb4_overlay_ws/install/tb4_perception_layer'; then
-    echo "  OK: tb4_perception_layer is built in the robot overlay."
+  # nav2_pi.yaml sets plugin_lib_names: [turtlebot4_bt_plugins] for the
+  # rotate-first BT, loaded from the robot overlay (~/tb4_overlay_ws). Verify it
+  # is present so bt_navigator can load the tree when 'tb4 onboard up' runs.
+  echo "Verifying bt plugins overlay on robot..."
+  if ssh ubuntu@turtlebot4 'test -d ~/tb4_overlay_ws/install/turtlebot4_bt_plugins'; then
+    echo "  OK: turtlebot4_bt_plugins is built in the robot overlay."
   else
-    echo "  WARN: tb4_perception_layer is NOT built on the robot overlay."
-    echo "        nav2.yaml enables perception_layer, so onboard nav2 must load it."
+    echo "  WARN: turtlebot4_bt_plugins is NOT built on the robot overlay."
+    echo "        nav2_pi.yaml needs it for the rotate-first tree."
     echo "        Run 'tb4 deploy plugins' before 'tb4 onboard up'."
   fi
 
   echo
-  echo "Done. Onboard Nav2 will subscribe to /semantic_obstacles."
-  echo "Perception runs on the UserPC:  tb4 yolo   and   tb4 fusion"
-  echo "Then start navigation onboard:  tb4 onboard up"
+  echo "Done. Start navigation onboard:  tb4 onboard up"
   echo "(RViz on the UserPC: tb4 viz)"
 }
 
@@ -467,9 +461,20 @@ wait_for_lifecycle_node() {
 set_lifecycle_state() {
   local node="$1"
   local state="$2"
+  local target_label=""
+  case "$state" in
+    configure|deactivate) target_label="inactive" ;;
+    activate)             target_label="active" ;;
+  esac
   local attempt
   for attempt in 1 2 3 4 5; do
     if timeout 20 ros2 lifecycle set "$node" "$state"; then
+      return 0
+    fi
+    # On a loaded Pi the change_state response can time out even though the
+    # transition succeeded; accept it if the node is already in the target state.
+    if [ -n "$target_label" ] && timeout 10 ros2 lifecycle get "$node" 2>/dev/null | grep -q "$target_label"; then
+      echo "[onboard up] $node already $target_label (set response was lost); continuing."
       return 0
     fi
     echo "[onboard up] WARN: failed to set $node -> $state (attempt $attempt/5)."

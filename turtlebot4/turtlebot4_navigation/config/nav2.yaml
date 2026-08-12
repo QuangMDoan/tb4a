@@ -5,8 +5,9 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: odom
     bt_loop_duration: 10
-    default_server_timeout: 20
-    wait_for_service_timeout: 1000
+    # Larger timeouts so a slow planner ack on the Pi's CPU doesn't fail the goal.
+    default_server_timeout: 50
+    wait_for_service_timeout: 3000
     action_server_result_timeout: 900.0
     # Custom BT nodes (IsGoalBehind + RotateAngle) from turtlebot4_bt_plugins,
     # used by the rotate-first tree so goals placed behind the robot are
@@ -34,7 +35,8 @@ controller_server:
     use_realtime_priority: false
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.5
+      # Lenient so a slow crawl through narrow spaces isn't aborted.
+      required_movement_radius: 0.25
       movement_time_allowance: 10.0
     general_goal_checker:
       stateful: true
@@ -43,10 +45,10 @@ controller_server:
       yaw_goal_tolerance: 0.25
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
-      # Reduced from 56/2000 so the control loop keeps 20 Hz on the UserPC.
-      time_steps: 50
+      # Kept light so MPPI leaves CPU headroom for the planner on the Pi's 4 cores.
+      time_steps: 40
       model_dt: 0.05
-      batch_size: 1500
+      batch_size: 600
       ax_max: 3.0
       ax_min: -3.0
       ay_max: 3.0
@@ -141,20 +143,15 @@ local_costmap:
       height: 4
       resolution: 0.06
       transform_tolerance: 0.5
-      footprint: "[[ 0.189,  0.000],
-                  [ 0.134, -0.134],
-                  [ 0.000, -0.189],
-                  [-0.134, -0.134],
-                  [-0.189,  0.000],
-                  [-0.134,  0.134],
-                  [ 0.000,  0.189],
-                  [ 0.134,  0.134]]"
+      # Circular footprint matching the round robot (0.17 m + 1 cm) so inflation can
+      # equal the radius: safe (>= inscribed) without over-inflating the 0.86 m hallway.
+      robot_radius: 0.18
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
-        # Must be >= footprint circumscribed radius (0.2036 m) for MPPI fast collision checking.
-        inflation_radius: 0.22
+        # >= inscribed 0.186 (robot_radius 0.18 + default footprint_padding 0.01).
+        inflation_radius: 0.19
       obstacle_layer:
         # 2D layer (not VoxelLayer): the only source is the 2D /scan, and voxel Z bounds
         # broke clearing when odom Z drift pushed the sensor origin below origin_z.
@@ -185,14 +182,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       transform_tolerance: 0.5
-      footprint: "[[ 0.189,  0.000],
-                  [ 0.134, -0.134],
-                  [ 0.000, -0.189],
-                  [-0.134, -0.134],
-                  [-0.189,  0.000],
-                  [-0.134,  0.134],
-                  [ 0.000,  0.189],
-                  [ 0.134,  0.134]]"
+      robot_radius: 0.18
       resolution: 0.06
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -216,8 +206,8 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
-        # Must be >= footprint circumscribed radius (0.2036 m) for MPPI fast collision checking.
-        inflation_radius: 0.22
+        # >= inscribed 0.186 (robot_radius 0.18 + default footprint_padding 0.01).
+        inflation_radius: 0.19
       always_send_full_costmap: true
 
 planner_server:
@@ -316,11 +306,14 @@ collision_monitor:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "local_costmap/published_footprint"
-      time_before_collision: 1.2
+      # Shorter forward projection so tight-hallway walls don't constantly throttle motion.
+      time_before_collision: 0.7
       simulation_time_step: 0.1
       min_points: 6
       visualize: False
-      enabled: True
+      # Disabled: it throttled the robot to a crawl in the 0.86 m hallway; MPPI's
+      # CostCritic (consider_footprint) still does collision avoidance.
+      enabled: False
     observation_sources: ["scan"]
     scan:
       type: "scan"
