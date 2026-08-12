@@ -13,11 +13,9 @@ bt_navigator:
     # approached by rotating in place first instead of reversing.
     plugin_lib_names: ["turtlebot4_bt_plugins"]
     default_nav_to_pose_bt_xml: "/home/qd/turtlebot4_ws/install/turtlebot4_navigation/share/turtlebot4_navigation/behavior_trees/navigate_to_pose_rotate_first.xml"
-    navigators: ["navigate_to_pose", "navigate_through_poses"]
+    navigators: ["navigate_to_pose"]
     navigate_to_pose:
       plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
-    navigate_through_poses:
-      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
     error_code_names:
       - compute_path_error_code
       - follow_path_error_code
