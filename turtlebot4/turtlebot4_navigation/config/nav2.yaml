@@ -227,7 +227,8 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"
-      tolerance: 0.5
+      # Accept a nearby reachable pose when the exact goal is in inflated/lethal space.
+      tolerance: 0.75
       use_astar: false
       allow_unknown: true
 
