@@ -32,7 +32,6 @@ Usage:
   tb4 off
   tb4 localize [map_yaml]
   tb4 localize onboard
-  tb4 setpose dock
   tb4 map
   tb4 map save
   tb4 joy
@@ -93,7 +92,6 @@ Examples:
   tb4 off
   tb4 localize
   tb4 localize onboard
-  tb4 setpose dock
   tb4 map
   tb4 map save
   tb4 joy
@@ -260,30 +258,6 @@ off_cmd() {
 localize_cmd() {
   local map="${1:-$HOME/turtlebot4_ws/map_101.yaml}"
   ros2 launch turtlebot4_navigation localization.launch.py map:="$map"
-}
-
-setpose_cmd() {
-  # Publish an initial pose to /initialpose, same effect as RViz "2D Pose
-  # Estimate". AMCL subscribes and seeds its particle filter with this pose.
-  local target="${1:-dock}"
-  local x y yaw
-  case "$target" in
-    dock)
-      # Robot's pose when docked (from amcl "Setting pose" log): x y yaw(rad).
-      x=-0.382; y=-2.046; yaw=3.137
-      ;;
-    *)
-      echo "Usage: tb4 setpose dock"
-      exit 1
-      ;;
-  esac
-  need_cmd python3
-  local qz qw
-  qz="$(python3 -c "import math;print(math.sin($yaw/2.0))")"
-  qw="$(python3 -c "import math;print(math.cos($yaw/2.0))")"
-  echo "Setting initial pose ($target): x=$x y=$y yaw=$yaw"
-  ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \
-    "{header: {frame_id: 'map'}, pose: {pose: {position: {x: $x, y: $y, z: 0.0}, orientation: {z: $qz, w: $qw}}, covariance: [0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891945200942]}}"
 }
 
 map_cmd() {
@@ -831,10 +805,6 @@ case "${1:-}" in
       onboard) shift; localize_onboard_cmd "$@" ;;
       *) localize_cmd "$@" ;;
     esac
-    ;;
-  setpose)
-    shift
-    setpose_cmd "$@"
     ;;
   map)
     shift
