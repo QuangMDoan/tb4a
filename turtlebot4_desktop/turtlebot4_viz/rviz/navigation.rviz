@@ -652,7 +652,7 @@ Visualization Manager:
           Max Value: 1
           Median window: 5
           Min Value: 0
-          Name: RealsenseCamera
+          Name: OAK-D Depth
           Normalize Range: true
           Topic:
             Depth: 5
@@ -679,7 +679,7 @@ Visualization Manager:
           Max Intensity: 4096
           Min Color: 0; 0; 0
           Min Intensity: 0
-          Name: RealsenseDepthImage
+          Name: OAK-D Points
           Position Transformer: XYZ
           Selectable: true
           Size (Pixels): 3
@@ -695,7 +695,7 @@ Visualization Manager:
           Use rainbow: true
           Value: true
       Enabled: true
-      Name: Realsense
+      Name: OAK-D
     - Class: rviz_default_plugins/MarkerArray
       Enabled: false
       Name: MarkerArray
