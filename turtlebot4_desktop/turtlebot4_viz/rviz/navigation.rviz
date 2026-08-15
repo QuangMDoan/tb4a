@@ -658,8 +658,8 @@ Visualization Manager:
             Depth: 5
             Durability Policy: Volatile
             History Policy: Keep Last
-            Reliability Policy: Reliable
-            Value: intel_realsense_r200_depth/image_raw
+            Reliability Policy: Best Effort
+            Value: /oakd/stereo/image_raw
           Value: true
         - Alpha: 1
           Autocompute Intensity Bounds: true
@@ -689,12 +689,12 @@ Visualization Manager:
             Depth: 5
             Durability Policy: Volatile
             History Policy: Keep Last
-            Reliability Policy: Reliable
-            Value: intel_realsense_r200_depth/points
+            Reliability Policy: Best Effort
+            Value: /oakd/stereo/points
           Use Fixed Frame: true
           Use rainbow: true
           Value: true
-      Enabled: false
+      Enabled: true
       Name: Realsense
     - Class: rviz_default_plugins/MarkerArray
       Enabled: false
