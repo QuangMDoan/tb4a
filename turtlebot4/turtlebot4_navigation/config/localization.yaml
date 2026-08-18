@@ -1,9 +1,9 @@
 amcl:
   ros__parameters:
-    alpha1: 0.4
-    alpha2: 0.4
-    alpha3: 0.4
-    alpha4: 0.4
+    alpha1: 0.1
+    alpha2: 0.2
+    alpha3: 0.2
+    alpha4: 0.2
     alpha5: 0.2
     base_frame_id: "base_link"
     beam_skip_distance: 0.5
