@@ -58,8 +58,10 @@ controller_server:
       vx_std: 0.2
       vy_std: 0.2
       wz_std: 0.4
-      vx_max: 0.5
-      vx_min: -0.35
+      # Matched to velocity_smoother's linear caps (0.26 / -0.26) so MPPI plans at the
+      # achievable speed instead of optimizing trajectories the smoother then clamps.
+      vx_max: 0.26
+      vx_min: -0.26
       vy_max: 0.5
       # Matched to velocity_smoother's 0.5 rad/s cap so MPPI plans at the achievable
       # rotation rate instead of commanding turns the smoother then clamps (adds lag).
@@ -150,11 +152,14 @@ local_costmap:
       # Circular footprint matching the round robot (0.17 m + 1 cm) so inflation can
       # equal the radius: safe (>= inscribed) without over-inflating the 0.86 m hallway.
       robot_radius: 0.18
+      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.18: reclaims 1 cm of
+      # corridor clearance so small AMCL yaw drift is less likely to lethal-ize the footprint.
+      footprint_padding: 0.0
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
-        # >= inscribed 0.186 (robot_radius 0.18 + default footprint_padding 0.01).
+        # >= inscribed 0.18 (robot_radius 0.18 + footprint_padding 0.0).
         inflation_radius: 0.19
       obstacle_layer:
         # 2D layer (not VoxelLayer): the only source is the 2D /scan, and voxel Z bounds
@@ -187,6 +192,9 @@ global_costmap:
       robot_base_frame: base_link
       transform_tolerance: 0.5
       robot_radius: 0.18
+      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.18: reclaims 1 cm of
+      # corridor clearance so small AMCL yaw drift is less likely to lethal-ize the footprint.
+      footprint_padding: 0.0
       resolution: 0.06
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -210,7 +218,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
-        # >= inscribed 0.186 (robot_radius 0.18 + default footprint_padding 0.01).
+        # >= inscribed 0.18 (robot_radius 0.18 + footprint_padding 0.0).
         inflation_radius: 0.19
       always_send_full_costmap: true
 

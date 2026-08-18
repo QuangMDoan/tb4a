@@ -16,7 +16,8 @@ amcl:
     laser_max_range: 100.0
     laser_min_range: -1.0
     laser_model_type: "likelihood_field"
-    max_beams: 60
+    # 60 -> 90: more scan rays constrain heading in the structured hallway (yaw lock).
+    max_beams: 90
     max_particles: 2000
     min_particles: 500
     odom_frame_id: "odom"
@@ -30,7 +31,9 @@ amcl:
     sigma_hit: 0.2
     tf_broadcast: true
     transform_tolerance: 1.0
-    update_min_a: 0.2
+    # 0.2 -> 0.1 rad: fuse a scan update every ~5.7 deg of rotation instead of ~11.5,
+    # so yaw is corrected mid-turn rather than coasting on odometry (hallway drift).
+    update_min_a: 0.1
     update_min_d: 0.25
     z_hit: 0.5
     z_max: 0.05
