@@ -1,0 +1,54 @@
+# Parameters for camera_lidar_fusion_node
+camera_lidar_fusion_node:
+  ros__parameters:
+    # Topics
+    detection_topic: '/detections'
+    depth_image_topic: '/oakd/stereo/image_raw'
+    camera_info_topic: '/oakd/stereo/camera_info'
+    detection_camera_info_topic: '/oakd/rgb/preview/camera_info'
+    output_topic: '/semantic_obstacles'
+    marker_topic: '/fusion_debug_markers'
+    publish_debug_markers: false
+
+    # Voxel downsampling (0 to disable)
+    voxel_size: 0.05
+
+    # RANSAC floor removal
+    ransac_iterations: 50
+    ransac_distance_threshold: 0.02
+    floor_normal_tolerance: 0.3        # radians from vertical
+
+    # Point matching & clustering
+    min_cluster_points: 3
+    depth_gap_threshold: 0.3           # metres
+    max_obstacle_distance: 4.0         # metres
+
+    # Temporal tracking
+    ema_alpha: 0.3
+    association_distance: 0.5          # metres
+    min_hits_to_confirm: 3
+    max_misses_to_delete: 5
+    track_timeout: 1.0                 # seconds
+
+    # Class-specific arrays (parallel)
+    class_names:
+      - 'person'
+      - 'chair'
+      - 'dog'
+      - 'cat'
+      - 'bicycle'
+      - 'stop sign'
+    class_radii:
+      - 0.3
+      - 0.25
+      - 0.2
+      - 0.15
+      - 0.4
+      - 0.5
+    class_costs:
+      - 254.0
+      - 254.0
+      - 200.0
+      - 180.0
+      - 254.0
+      - 254.0
