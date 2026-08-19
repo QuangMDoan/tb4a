@@ -43,12 +43,18 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, CompressedImage
 from vision_msgs.msg import (
     Detection2D,
     Detection2DArray,
     ObjectHypothesisWithPose,
 )
+
+# Optional: only needed when image_transport == 'ffmpeg' (OAK-D low_bandwidth).
+try:
+    from ffmpeg_image_transport_msgs.msg import FFMPEGPacket
+except ImportError:
+    FFMPEGPacket = None
 
 from ultralytics import YOLO
 from cv_bridge import CvBridge
@@ -69,7 +75,9 @@ class YoloDetectorNode(Node):
         ])
         self.declare_parameter('publish_visualisation', False)
         self.declare_parameter('visualisation_topic', '/detections/image')
-
+        # 'raw' subscribes to sensor_msgs/Image; 'ffmpeg' subscribes to the
+        # OAK-D low_bandwidth MJPEG stream (<image_topic>/ffmpeg).
+        self.declare_parameter('image_transport', 'raw')
         model_path = self.get_parameter('model_path').value
         self.conf_threshold = self.get_parameter('confidence_threshold').value
         image_topic = self.get_parameter('image_topic').value
@@ -79,6 +87,7 @@ class YoloDetectorNode(Node):
         self.target_classes = self.get_parameter('target_classes').value
         self.publish_vis = self.get_parameter('publish_visualisation').value
         vis_topic = self.get_parameter('visualisation_topic').value
+        self.image_transport = self.get_parameter('image_transport').value
 
         # --- YOLO model ---
         self.get_logger().info(f'Loading YOLO model: {model_path}')
@@ -113,39 +122,81 @@ class YoloDetectorNode(Node):
         else:
             self.vis_pub = None
 
-        self.image_sub = self.create_subscription(
-            Image, image_topic, self.image_callback, sensor_qos
-        )
+        if self.image_transport == 'compressed':
+            subscribed_topic = image_topic + '/compressed'
+            self.image_sub = self.create_subscription(
+                CompressedImage, subscribed_topic, self.compressed_callback, sensor_qos
+            )
+        elif self.image_transport == 'ffmpeg':
+            if FFMPEGPacket is None:
+                raise RuntimeError(
+                    "image_transport 'ffmpeg' requires ffmpeg_image_transport_msgs "
+                    '(sudo apt install ros-jazzy-ffmpeg-image-transport-msgs)'
+                )
+            subscribed_topic = image_topic + '/ffmpeg'
+            self.image_sub = self.create_subscription(
+                FFMPEGPacket, subscribed_topic, self.ffmpeg_callback, sensor_qos
+            )
+        else:
+            subscribed_topic = image_topic
+            self.image_sub = self.create_subscription(
+                Image, image_topic, self.image_callback, sensor_qos
+            )
 
         # Rate-limiting state
         self.last_publish_time = self.get_clock().now()
         self.min_period_ns = int(1e9 / self.rate_limit) if self.rate_limit > 0 else 0
 
         self.get_logger().info(
-            f'YoloDetectorNode ready — subscribing to {image_topic}, '
-            f'publishing to {detection_topic}'
+            f'YoloDetectorNode ready — subscribing to {subscribed_topic} '
+            f'({self.image_transport}), publishing to {detection_topic}'
         )
-
     # ------------------------------------------------------------------
     # Callback
     # ------------------------------------------------------------------
 
     def image_callback(self, msg: Image):
+        if self._rate_limited():
+            return
+        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self.process_frame(cv_image, msg.header)
 
+    def compressed_callback(self, msg: CompressedImage):
+        if self._rate_limited():
+            return
+        cv_image = cv2.imdecode(np.frombuffer(msg.data, np.uint8), cv2.IMREAD_COLOR)
+        if cv_image is None:
+            self.get_logger().warn('Failed to decode CompressedImage frame.')
+            return
+        self.process_frame(cv_image, msg.header)
+
+    def ffmpeg_callback(self, msg):
+        if self._rate_limited():
+            return
+        # OAK-D low_bandwidth uses MJPEG, so each packet is a standalone JPEG frame.
+        cv_image = cv2.imdecode(np.frombuffer(msg.data, np.uint8), cv2.IMREAD_COLOR)
+        if cv_image is None:
+            self.get_logger().warn(
+                f'Failed to decode FFMPEG packet (encoding={msg.encoding}); expected MJPEG.'
+            )
+            return
+        self.process_frame(cv_image, msg.header)
+
+    def _rate_limited(self) -> bool:
         now = self.get_clock().now()
         if (now - self.last_publish_time).nanoseconds < self.min_period_ns:
-            return
+            return True
         self.last_publish_time = now
+        return False
 
-        # Convert ROS Image -> OpenCV BGR
-        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+    def process_frame(self, cv_image: np.ndarray, header):
 
         # Run inference
         results = self.model(cv_image, conf=self.conf_threshold, verbose=False)
 
         # Build Detection2DArray
         det_array = Detection2DArray()
-        det_array.header = msg.header
+        det_array.header = header
 
         if len(results) == 0 or results[0].boxes is None:
             self.detection_pub.publish(det_array)
@@ -167,7 +218,7 @@ class YoloDetectorNode(Node):
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
 
             det = Detection2D()
-            det.header = msg.header
+            det.header = header
 
             # Center + size (Detection2D convention)
             det.bbox.center.position.x = float((x1 + x2) / 2.0)
