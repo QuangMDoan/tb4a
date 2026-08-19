@@ -7,7 +7,7 @@ yolo_detector_node:
       image_transport: 'compressed'
       detection_topic: '/detections'
       device: 'cuda'
-      publish_rate_limit: 15.0
+      publish_rate_limit: 10.0
       publish_visualisation: false 
       visualisation_topic: '/detections/image'
       target_classes:

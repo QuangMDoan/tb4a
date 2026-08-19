@@ -47,10 +47,11 @@ controller_server:
       yaw_goal_tolerance: 0.25
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
-      # Kept light so MPPI leaves CPU headroom for the planner on the Pi's 4 cores.
-      time_steps: 50
+      # Coexist profile (perception + nav2 on the Pi): 40/600 instead of 50/1000
+      # to free CPU for the OAK-D pipeline. Revert to 50/1000 for nav-only quality.
+      time_steps: 40
       model_dt: 0.05
-      batch_size: 1000
+      batch_size: 600
       # Matched to the velocity_smoother accel caps (1.0 / 1.5) so MPPI plans at the
       # achievable ramp rate instead of commanding accels the smoother then clamps.
       ax_max: 3.0
