@@ -1,0 +1,17 @@
+yolo_detector_node:
+  ros__parameters:
+      model_path: '/home/qd/turtlebot4_ws/yolov8n.pt'
+      confidence_threshold: 0.6 
+      image_topic: '/oakd/rgb/preview/image_raw'
+      detection_topic: '/detections'
+      device: 'cuda'
+      publish_rate_limit: 15.0
+      publish_visualisation: false 
+      visualisation_topic: '/detections/image'
+      target_classes:
+        - 'person'
+        - 'stop sign'
+        - 'chair'
+        - 'dog'
+        - 'cat'
+        - 'bicycle'

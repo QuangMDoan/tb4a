@@ -1,0 +1,38 @@
+/oakd:
+  ros__parameters:
+    camera:
+      i_enable_imu: false
+      i_enable_ir: false
+      i_floodlight_brightness: 0
+      i_laser_dot_brightness: 100
+      i_nn_type: none
+      i_pipeline_type: RGBD
+      i_usb_speed: SUPER_PLUS
+    left:
+      i_fps: 15.0
+      i_resolution: '400P'
+    right:
+      i_fps: 15.0
+      i_resolution: '400P'
+    rgb:
+      i_board_socket_id: 0
+      i_fps: 30.0
+      i_height: 720
+      i_interleaved: false
+      i_max_q_size: 10
+      i_preview_size: 250
+      i_enable_preview: true
+      i_low_bandwidth: false
+      i_keep_preview_aspect_ratio: true
+      i_publish_topic: true
+      i_resolution: '1080P'
+      i_width: 1280
+    stereo:
+      i_fps: 15.0
+      i_height: 480
+      i_width: 640
+      i_low_bandwidth: false
+      i_publish_topic: true
+      i_output_disparity: false
+      i_get_base_device_timestamp: true
+    use_sim_time: false
