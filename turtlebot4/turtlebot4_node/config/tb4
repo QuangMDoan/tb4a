@@ -305,11 +305,13 @@ nav2_cmd() {
 # Robot paths: overlay ws = ~/tb4_overlay_ws (bt plugins), config = ~/tb4_cfg.
 
 deploy_plugins_cmd() {
-  # Nav2 runs onboard the robot (Pi). It loads one custom overlay package:
-  #   - turtlebot4_bt_plugins : IsGoalBehind + RotateAngle BT nodes used by
-  #     navigate_to_pose_rotate_first.xml (rotate-first; no perception layer).
+  # Nav2 runs onboard the robot (Pi). It loads custom overlay packages:
+  #   - turtlebot4_bt_plugins : IsGoalBehind + RotateAngle BT nodes (rotate-first).
+  #   - tb4_perception_layer  : PerceptionLayer costmap plugin + IsStopSignNearby
+  #     BT node + SemanticObstacleArray msgs (stop-sign / semantic obstacles).
   local pkgs=(
     "$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_bt_plugins"
+    "$HOME/turtlebot4_ws/src/tb4_perception_layer"
   )
   echo "Deploying Nav2 overlay package to robot (bt plugins)..."
   ssh ubuntu@turtlebot4 'mkdir -p ~/tb4_overlay_ws/src'
@@ -321,7 +323,7 @@ deploy_plugins_cmd() {
     scp -r "$src" ubuntu@turtlebot4:'~/tb4_overlay_ws/src/'
   done
   echo "Building overlay on robot (this may take a few minutes)..."
-  ssh -t ubuntu@turtlebot4 'source /opt/ros/jazzy/setup.bash && cd ~/tb4_overlay_ws && colcon build --packages-select turtlebot4_bt_plugins'
+  ssh -t ubuntu@turtlebot4 'source /opt/ros/jazzy/setup.bash && cd ~/tb4_overlay_ws && colcon build --packages-select turtlebot4_bt_plugins tb4_perception_layer'
 }
 
 deploy_onboard_cmd() {

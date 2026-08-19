@@ -1,0 +1,77 @@
+<!--
+    Rotate-first navigation (see navigate_to_pose_rotate_first.xml) PLUS a
+    stop-sign guard.
+
+    A ReactiveSequence wraps navigation with a sticky Fallback gate:
+      - IsStopSignNearby (from is_stop_sign_nearby_bt_node) reads
+        /semantic_obstacles and returns SUCCESS once when a 'stop sign' first
+        comes within distance_threshold, then FAILURE while still nearby.
+      - Inverted, that gate normally SUCCEEDS (no sign) so navigation runs.
+      - On the rising edge it FAILS, so the Fallback runs Wait (a hard stop);
+        the standard Fallback stays on the running Wait child, so the robot
+        holds for wait_duration then resumes with a fresh plan. One stop per
+        stop-sign episode (the condition re-arms after rearm_clear_time clear).
+
+    Requires libraries: turtlebot4_bt_plugins, is_stop_sign_nearby_bt_node.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+    <BehaviorTree ID="MainTree">
+        <Sequence name="NavigateWithRotate">
+            <Fallback name="RotateIfGoalBehind">
+                <Sequence name="DoRotate">
+                    <IsGoalBehind goal="{goal}" angle="{rotate_angle}" behind_angle="1.57" min_distance="0.2"/>
+                    <RotateAngle angle="{rotate_angle}" max_rotation_speed="1.0"/>
+                </Sequence>
+                <AlwaysSuccess/>
+            </Fallback>
+            <ReactiveSequence name="StopSignGuardedNavigation">
+                <Fallback name="StopSignGate">
+                    <Inverter>
+                        <IsStopSignNearby distance_threshold="1.5" semantic_topic="/semantic_obstacles" global_frame="map" rearm_clear_time="1.5"/>
+                    </Inverter>
+                    <Wait wait_duration="3.0"/>
+                </Fallback>
+                <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+                    <PipelineSequence name="NavigateWithReplanning">
+                        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
+                        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
+                        <RateController hz="1.0">
+                            <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+                                <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+                                <Sequence>
+                                    <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                                    <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+                                </Sequence>
+                            </RecoveryNode>
+                        </RateController>
+                        <RecoveryNode number_of_retries="1" name="FollowPath">
+                            <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
+                            <Sequence>
+                                <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                                <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+                            </Sequence>
+                        </RecoveryNode>
+                    </PipelineSequence>
+                    <Sequence>
+                        <Fallback>
+                            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                            <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                        </Fallback>
+                        <ReactiveFallback name="RecoveryFallback">
+                            <GoalUpdated/>
+                            <RoundRobin name="RecoveryActions">
+                                <Sequence name="ClearingActions">
+                                    <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+                                    <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+                                </Sequence>
+                                <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+                                <BackUp backup_dist="0.15" backup_speed="0.05" error_code_id="{backup_error_code}"/>
+                                <Wait wait_duration="5.0"/>
+                            </RoundRobin>
+                        </ReactiveFallback>
+                    </Sequence>
+                </RecoveryNode>
+            </ReactiveSequence>
+        </Sequence>
+    </BehaviorTree>
+</root>

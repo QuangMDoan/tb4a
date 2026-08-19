@@ -9,11 +9,11 @@ bt_navigator:
     default_server_timeout: 50
     wait_for_service_timeout: 3000
     action_server_result_timeout: 900.0
-    # Custom BT nodes (IsGoalBehind + RotateAngle) from turtlebot4_bt_plugins,
-    # used by the rotate-first tree so goals placed behind the robot are
-    # approached by rotating in place first instead of reversing.
-    plugin_lib_names: ["turtlebot4_bt_plugins"]
-    default_nav_to_pose_bt_xml: "/home/qd/turtlebot4_ws/install/turtlebot4_navigation/share/turtlebot4_navigation/behavior_trees/navigate_to_pose_rotate_first.xml"
+    # Custom BT nodes: turtlebot4_bt_plugins (IsGoalBehind + RotateAngle, rotate-first)
+    # and is_stop_sign_nearby_bt_node (IsStopSignNearby). The stop-sign tree pauses
+    # navigation when a 'stop sign' from /semantic_obstacles comes within range.
+    plugin_lib_names: ["turtlebot4_bt_plugins", "is_stop_sign_nearby_bt_node"]
+    default_nav_to_pose_bt_xml: "/home/qd/turtlebot4_ws/install/turtlebot4_navigation/share/turtlebot4_navigation/behavior_trees/navigate_to_pose_rotate_first_stopsign.xml"
     navigators: ["navigate_to_pose"]
     navigate_to_pose:
       plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
@@ -157,7 +157,23 @@ local_costmap:
       # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.18: reclaims 1 cm of
       # corridor clearance so small AMCL yaw drift is less likely to lethal-ize the footprint.
       footprint_padding: 0.0
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "perception_layer", "inflation_layer"]
+      # Class-aware semantic obstacles from the camera-depth fusion node
+      # (/semantic_obstacles). 'stop sign' is persisted in the map frame.
+      perception_layer:
+        plugin: "tb4_perception_layer::PerceptionLayer"
+        enabled: true
+        semantic_topic: "/semantic_obstacles"
+        obstacle_timeout: 3.0
+        min_obstacle_distance: 0.35
+        default_cost: 254
+        default_radius: 0.3
+        class_names: ['person', 'chair', 'dog', 'cat', 'bicycle', 'stop sign']
+        class_costs: [254, 254, 200, 180, 254, 254]
+        class_radii: [0.3, 0.25, 0.2, 0.15, 0.4, 0.5]
+        persistent_classes: ['stop sign']
+        persistent_frame: "map"
+        persistent_timeout: 600.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
@@ -199,7 +215,23 @@ global_costmap:
       footprint_padding: 0.0
       resolution: 0.06
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "perception_layer", "inflation_layer"]
+      # Class-aware semantic obstacles from the camera-depth fusion node
+      # (/semantic_obstacles). 'stop sign' is persisted in the map frame.
+      perception_layer:
+        plugin: "tb4_perception_layer::PerceptionLayer"
+        enabled: true
+        semantic_topic: "/semantic_obstacles"
+        obstacle_timeout: 3.0
+        min_obstacle_distance: 0.35
+        default_cost: 254
+        default_radius: 0.3
+        class_names: ['person', 'chair', 'dog', 'cat', 'bicycle', 'stop sign']
+        class_costs: [254, 254, 200, 180, 254, 254]
+        class_radii: [0.3, 0.25, 0.2, 0.15, 0.4, 0.5]
+        persistent_classes: ['stop sign']
+        persistent_frame: "map"
+        persistent_timeout: 600.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
