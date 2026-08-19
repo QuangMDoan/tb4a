@@ -53,6 +53,7 @@ void PerceptionLayer::onInitialize()
   declareParameter("persistent_frame", rclcpp::ParameterValue("map"));
   declareParameter("persistent_timeout", rclcpp::ParameterValue(600.0));
   declareParameter("min_obstacle_distance", rclcpp::ParameterValue(0.35));
+  declareParameter("persistent_react_distance", rclcpp::ParameterValue(0.0));
 
   bool enabled = true;
   node->get_parameter(name_ + ".enabled", enabled);
@@ -64,6 +65,7 @@ void PerceptionLayer::onInitialize()
   node->get_parameter(name_ + ".persistent_frame", persistent_frame_);
   node->get_parameter(name_ + ".persistent_timeout", persistent_timeout_);
   node->get_parameter(name_ + ".min_obstacle_distance", min_obstacle_distance_);
+  node->get_parameter(name_ + ".persistent_react_distance", persistent_react_distance_);
 
   int default_cost_int = 254;
   node->get_parameter(name_ + ".default_cost", default_cost_int);
@@ -180,7 +182,7 @@ void PerceptionLayer::updateBounds(
   robot_gy_ = robot_y;
   have_robot_pose_ = true;
 
-  auto expand = [&](const CachedObstacle & obs, double timeout) {
+  auto expand = [&](const CachedObstacle & obs, double timeout, bool is_persistent) {
       double age = (now - obs.stamp).seconds();
       if (age > timeout) {return;}
       double wx, wy;
@@ -188,6 +190,11 @@ void PerceptionLayer::updateBounds(
       // Ignore detections stamped on top of the robot so they cannot
       // self-block navigation.
       if (std::hypot(wx - robot_x, wy - robot_y) < min_obstacle_distance_) {return;}
+      // React-distance gate: a persistent keep-out (e.g. stop sign) only enters
+      // the costmap once the robot is within persistent_react_distance_, so a
+      // far-off sign does not reroute the robot early.
+      if (is_persistent && persistent_react_distance_ > 0.0 &&
+        std::hypot(wx - robot_x, wy - robot_y) > persistent_react_distance_) {return;}
       double r = obs.radius;
       *min_x = std::min(*min_x, wx - r);
       *min_y = std::min(*min_y, wy - r);
@@ -195,8 +202,8 @@ void PerceptionLayer::updateBounds(
       *max_y = std::max(*max_y, wy + r);
     };
 
-  for (const auto & obs : obstacles_) {expand(obs, obstacle_timeout_);}
-  for (const auto & obs : persistent_obstacles_) {expand(obs, persistent_timeout_);}
+  for (const auto & obs : obstacles_) {expand(obs, obstacle_timeout_, false);}
+  for (const auto & obs : persistent_obstacles_) {expand(obs, persistent_timeout_, true);}
 }
 
 void PerceptionLayer::updateCosts(
@@ -214,7 +221,7 @@ void PerceptionLayer::updateCosts(
   rclcpp::Time now = node->get_clock()->now();
   double resolution = master_grid.getResolution();
 
-  auto stamp = [&](const CachedObstacle & obs, double timeout) {
+  auto stamp = [&](const CachedObstacle & obs, double timeout, bool is_persistent) {
       double age = (now - obs.stamp).seconds();
       if (age > timeout) {return;}
 
@@ -226,6 +233,14 @@ void PerceptionLayer::updateCosts(
       // self-block navigation (mirrors the filter in updateBounds).
       if (have_robot_pose_ &&
         std::hypot(wx - robot_gx_, wy - robot_gy_) < min_obstacle_distance_)
+      {
+        return;
+      }
+
+      // React-distance gate for persistent keep-outs (mirrors updateBounds):
+      // a stop sign only stamps cost once the robot is within react distance.
+      if (is_persistent && persistent_react_distance_ > 0.0 && have_robot_pose_ &&
+        std::hypot(wx - robot_gx_, wy - robot_gy_) > persistent_react_distance_)
       {
         return;
       }
@@ -267,8 +282,8 @@ void PerceptionLayer::updateCosts(
       }
     };
 
-  for (const auto & obs : obstacles_) {stamp(obs, obstacle_timeout_);}
-  for (const auto & obs : persistent_obstacles_) {stamp(obs, persistent_timeout_);}
+  for (const auto & obs : obstacles_) {stamp(obs, obstacle_timeout_, false);}
+  for (const auto & obs : persistent_obstacles_) {stamp(obs, persistent_timeout_, true);}
 }
 
 void PerceptionLayer::reset()

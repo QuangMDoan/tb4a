@@ -65,7 +65,9 @@ controller_server:
       # Matched to velocity_smoother's linear caps (0.35 / -0.35) so MPPI plans at the
       # achievable speed instead of optimizing trajectories the smoother then clamps.
       vx_max: 0.35
-      vx_min: -0.35
+      # Forward-only: no reverse in path following, so following a 'go back' route
+      # makes the robot rotate ~180 deg and drive forward instead of reversing.
+      vx_min: 0.0
       vy_max: 0.5
       # Matched to velocity_smoother's 1.0 rad/s cap so MPPI plans at the achievable
       # rotation rate instead of commanding turns the smoother then clamps (adds lag).
@@ -104,7 +106,8 @@ controller_server:
       PreferForwardCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 0.0
+        # Weighted up (was 0.0) to favour rotate-then-forward over reversing.
+        cost_weight: 5.0
         threshold_to_consider: 0.5
       CostCritic:
         enabled: true
@@ -176,6 +179,9 @@ local_costmap:
         persistent_classes: ['stop sign']
         persistent_frame: "map"
         persistent_timeout: 600.0
+        # A stop sign only becomes a costmap obstacle (-> reroute) once the robot
+        # is within 2 m; farther than that it keeps the old plan.
+        persistent_react_distance: 2.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
@@ -234,6 +240,9 @@ global_costmap:
         persistent_classes: ['stop sign']
         persistent_frame: "map"
         persistent_timeout: 600.0
+        # A stop sign only becomes a costmap obstacle (-> reroute) once the robot
+        # is within 2 m; farther than that it keeps the old plan.
+        persistent_react_distance: 2.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -329,10 +338,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    # Rotational cap lowered 1.0 -> 0.5 rad/s: fast yaw degrades AMCL scan matching
-    # in the narrow hallway. Linear kept at 0.35 to isolate the rotation effect.
+    # Linear min 0.0 = forward-only (matches MPPI vx_min 0.0): the smoother won't
+    # pass reverse commands, so the robot rotates to face its route instead of reversing.
     max_velocity: [0.35, 0.0, 1.0]
-    min_velocity: [-0.35, 0.0, -1.0]
+    min_velocity: [0.0, 0.0, -1.0]
     # Softened so yaw/linear ramp in rather than snapping to the cap in ~0.15 s:
     # gentler onset reduces wheel slip and sudden scan jumps that disturb AMCL.
     max_accel: [2.5, 0.0, 3.2]

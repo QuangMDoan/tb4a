@@ -74,6 +74,9 @@ private:
   // Obstacles whose centre is closer than this (m) to the robot are ignored,
   // so a detection stamped on top of the robot cannot self-block navigation.
   double min_obstacle_distance_;
+  // Persistent keep-outs (e.g. stop signs) only stamp cost once the robot is
+  // within this distance (m). 0 = always stamp (disabled).
+  double persistent_react_distance_{0.0};
   std::unordered_map<std::string, unsigned char> class_cost_map_;
   std::unordered_map<std::string, double> class_radius_map_;
 
