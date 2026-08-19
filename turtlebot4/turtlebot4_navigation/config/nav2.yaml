@@ -180,8 +180,8 @@ local_costmap:
         persistent_frame: "map"
         persistent_timeout: 600.0
         # A stop sign only becomes a costmap obstacle (-> reroute) once the robot
-        # is within 2 m; farther than that it keeps the old plan.
-        persistent_react_distance: 2.0
+        # is within 1.5 m; farther than that it keeps the old plan.
+        persistent_react_distance: 1.5
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
@@ -241,8 +241,8 @@ global_costmap:
         persistent_frame: "map"
         persistent_timeout: 600.0
         # A stop sign only becomes a costmap obstacle (-> reroute) once the robot
-        # is within 2 m; farther than that it keeps the old plan.
-        persistent_react_distance: 2.0
+        # is within 1.5 m; farther than that it keeps the old plan.
+        persistent_react_distance: 1.5
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
