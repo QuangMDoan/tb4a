@@ -55,6 +55,7 @@ Usage:
   tb4 bbox viz
   tb4 bbox yolo-viz
   tb4 bbox fusion-viz
+  tb4 oakd tb2pc
   tb4 rgb_cam_rate
   tb4 bbox_rate
   tb4 depth_cam_rate
@@ -115,6 +116,7 @@ Examples:
   tb4 bbox viz
   tb4 bbox yolo-viz
   tb4 bbox fusion-viz
+  tb4 oakd tb2pc
   tb4 rgb_cam_rate
   tb4 bbox_rate
   tb4 depth_cam_rate
@@ -603,6 +605,23 @@ yolo_cmd() {
   fi
 }
 
+oakd_cmd() {
+  local sub="${1:-}"
+  local remote_cfg="/opt/ros/jazzy/share/turtlebot4_bringup/config/oakd_pro.yaml"
+  local local_dir="$HOME/turtlebot4_ws/src/tb4_perception/config"
+  case "$sub" in
+    tb2pc)
+      echo "Copying oakd_pro.yaml from robot -> $local_dir/"
+      scp "ubuntu@turtlebot4:$remote_cfg" "$local_dir/"
+      ;;
+    *)
+      echo "Unknown oakd subcommand: ${sub:-}"
+      echo "Usage: tb4 oakd tb2pc"
+      exit 1
+      ;;
+  esac
+}
+
 fusion_cmd() {
   local params_file="$HOME/turtlebot4_ws/src/tb4_perception_integration/config/fusion_params.yaml"
   if [ "${1:-}" = "viz" ]; then
@@ -891,6 +910,10 @@ case "${1:-}" in
   bbox)
     shift
     bbox_cmd "$@"
+    ;;
+  oakd)
+    shift
+    oakd_cmd "$@"
     ;;
   rgb_cam_rate)
     shift
