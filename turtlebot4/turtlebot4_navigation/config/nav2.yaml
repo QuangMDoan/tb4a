@@ -6,7 +6,8 @@ bt_navigator:
     odom_topic: odom
     bt_loop_duration: 10
     # Larger timeouts so a slow planner ack on the Pi's CPU doesn't fail the goal.
-    default_server_timeout: 50
+    # 1000 ms (was 50): tolerates momentary load spikes when perception + nav2 share the Pi.
+    default_server_timeout: 1000
     wait_for_service_timeout: 3000
     action_server_result_timeout: 900.0
     # Custom BT nodes: turtlebot4_bt_plugins (IsGoalBehind + RotateAngle, rotate-first)
