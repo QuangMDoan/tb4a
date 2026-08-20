@@ -1,7 +1,9 @@
 yolo_detector_node:
   ros__parameters:
       model_path: '/home/qd/turtlebot4_ws/yolov8n.pt'
-      confidence_threshold: 0.6 
+      # Raised 0.6 -> 0.75 to cut corner/wall false positives (e.g. a wall chunk
+      # misread as 'person') that were wedging the robot in tight corridors.
+      confidence_threshold: 0.75 
       image_topic: '/oakd/rgb/preview/image_raw'
       # 'compressed' decodes the JPEG image_transport stream (<image_topic>/compressed).
       image_transport: 'compressed'
