@@ -182,6 +182,10 @@ local_costmap:
         # A stop sign only becomes a costmap obstacle (-> reroute) once the robot
         # is within 1.5 m; farther than that it keeps the old plan.
         persistent_react_distance: 1.5
+        # After a Nav2 recovery clears the costmap, don't let the live fusion
+        # stream re-stamp transient obstacles for this long, so the robot can
+        # move out of a spot a false detection had wedged it into.
+        clear_suppression_time: 2.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
@@ -243,6 +247,10 @@ global_costmap:
         # A stop sign only becomes a costmap obstacle (-> reroute) once the robot
         # is within 1.5 m; farther than that it keeps the old plan.
         persistent_react_distance: 1.5
+        # After a Nav2 recovery clears the costmap, don't let the live fusion
+        # stream re-stamp transient obstacles for this long, so the robot can
+        # move out of a spot a false detection had wedged it into.
+        clear_suppression_time: 2.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true

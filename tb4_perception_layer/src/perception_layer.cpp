@@ -54,6 +54,7 @@ void PerceptionLayer::onInitialize()
   declareParameter("persistent_timeout", rclcpp::ParameterValue(600.0));
   declareParameter("min_obstacle_distance", rclcpp::ParameterValue(0.35));
   declareParameter("persistent_react_distance", rclcpp::ParameterValue(0.0));
+  declareParameter("clear_suppression_time", rclcpp::ParameterValue(2.0));
 
   bool enabled = true;
   node->get_parameter(name_ + ".enabled", enabled);
@@ -66,6 +67,7 @@ void PerceptionLayer::onInitialize()
   node->get_parameter(name_ + ".persistent_timeout", persistent_timeout_);
   node->get_parameter(name_ + ".min_obstacle_distance", min_obstacle_distance_);
   node->get_parameter(name_ + ".persistent_react_distance", persistent_react_distance_);
+  node->get_parameter(name_ + ".clear_suppression_time", clear_suppression_time_);
 
   int default_cost_int = 254;
   node->get_parameter(name_ + ".default_cost", default_cost_int);
@@ -110,6 +112,21 @@ void PerceptionLayer::obstacleCallback(
   std::lock_guard<std::mutex> lock(mutex_);
   obstacles_.clear();
 
+  // If a recent costmap clear opened a suppression window, keep transient
+  // obstacles empty so the live fusion stream can't instantly re-stamp the
+  // blob that a recovery just cleared. Persistent keep-outs still latch below.
+  bool suppress_transient = false;
+  if (have_suppress_window_) {
+    auto node = node_.lock();
+    if (node) {
+      if (node->get_clock()->now() < suppress_transient_until_) {
+        suppress_transient = true;
+      } else {
+        have_suppress_window_ = false;
+      }
+    }
+  }
+
   const std::string msg_frame = msg->header.frame_id;
 
   for (const auto & obs : msg->obstacles) {
@@ -123,7 +140,9 @@ void PerceptionLayer::obstacleCallback(
       ? static_cast<unsigned char>(std::clamp(static_cast<int>(obs.cost), 0, 254))
       : costForClass(obs.class_id);
     cached.stamp = rclcpp::Time(obs.header.stamp);
-    obstacles_.push_back(cached);
+    if (!suppress_transient) {
+      obstacles_.push_back(cached);
+    }
 
     if (!isPersistentClass(obs.class_id)) {continue;}
 
@@ -290,6 +309,15 @@ void PerceptionLayer::reset()
 {
   std::lock_guard<std::mutex> lock(mutex_);
   obstacles_.clear();
+  // A costmap clear (e.g. Nav2 recovery) resets this layer via reset(). Open a
+  // suppression window so the live fusion stream cannot immediately repopulate
+  // the transient blob before the robot has a chance to move out of it.
+  auto node = node_.lock();
+  if (node && clear_suppression_time_ > 0.0) {
+    suppress_transient_until_ =
+      node->get_clock()->now() + rclcpp::Duration::from_seconds(clear_suppression_time_);
+    have_suppress_window_ = true;
+  }
   // Note: persistent_obstacles_ are intentionally NOT cleared here so that
   // latched keep-out zones (e.g. stop signs) survive costmap resets/clears.
   current_ = false;

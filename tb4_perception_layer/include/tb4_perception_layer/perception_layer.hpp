@@ -77,6 +77,13 @@ private:
   // Persistent keep-outs (e.g. stop signs) only stamp cost once the robot is
   // within this distance (m). 0 = always stamp (disabled).
   double persistent_react_distance_{0.0};
+  // After a costmap clear (e.g. Nav2 recovery calls reset()), transient obstacle
+  // stamping is suppressed for this long so the live fusion stream cannot
+  // instantly repopulate the same blob before the robot can move. Persistent
+  // keep-outs are unaffected. 0 = disabled.
+  double clear_suppression_time_{2.0};
+  rclcpp::Time suppress_transient_until_;
+  bool have_suppress_window_{false};
   std::unordered_map<std::string, unsigned char> class_cost_map_;
   std::unordered_map<std::string, double> class_radius_map_;
 
