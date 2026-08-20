@@ -1,31 +1,53 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<!--
-  Fast DDS tuning profile for the Nav2 / localization stack (UserPC + robot).
-
-  Purpose: stop "failed to send response (timeout)" on the CPU-saturated Pi
-  during Nav2 lifecycle bringup. ASYNCHRONOUS publish mode moves the write off
-  the calling thread, so a lifecycle change_state response can't miss its
-  deadline under load.
-
-  Wiring:
-    - UserPC: exported by ~/.bashrc (FASTRTPS_DEFAULT_PROFILES_FILE -> this file).
-    - Robot:  deployed to ~/tb4_cfg/fastdds_nav2.xml by `tb4 deploy onboard` and
-              exported in the `tb4 onboard up` / `tb4 nav2 onboard` SSH sessions.
-
-  DO NOT add a <participant> transport override (custom SHM/UDP +
-  useBuiltinTransports=false). Verified on-robot that it breaks discovery/interop
-  with the running turtlebot4 service nodes (participant then sees only
-  /parameter_events + /rosout). Keep transports at the builtin defaults.
--->
 <dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
-  <profiles>
-    <data_writer profile_name="tb4_writer_default" is_default_profile="true">
-      <qos>
-        <publishMode>
-          <!-- Background send thread: the caller never blocks/times out. -->
-          <kind>ASYNCHRONOUS</kind>
-        </publishMode>
-      </qos>
-    </data_writer>
-  </profiles>
+    <profiles>
+        <transport_descriptors>
+            <transport_descriptor>
+                <transport_id>custom_udp</transport_id>
+                <type>UDPv4</type>
+                <interfaceWhiteList>
+                    <address>127.0.0.1</address>
+                    <address>192.168.86.24</address>
+                </interfaceWhiteList>
+            </transport_descriptor>
+        </transport_descriptors>
+
+        <participant profile_name="participant_profile" is_default_profile="true">
+            <rtps>
+                <builtin>
+                    <discovery_config>
+                        <discoveryProtocol>SUPER_CLIENT</discoveryProtocol>
+                        <discoveryServersList>
+                            <RemoteServer prefix="44.53.00.5f.45.50.52.4f.53.49.4d.41">
+                                <metatrafficUnicastLocatorList>
+                                    <locator>
+                                        <udpv4>
+                                            <address>192.168.86.39</address>
+                                            <port>11811</port>
+                                        </udpv4>
+                                    </locator>
+                                </metatrafficUnicastLocatorList>
+                            </RemoteServer>
+                        </discoveryServersList>
+                    </discovery_config>
+                </builtin>
+                <userTransports>
+                    <transport_id>custom_udp</transport_id>
+                </userTransports>
+                <useBuiltinTransports>false</useBuiltinTransports>
+            </rtps>
+        </participant>
+
+        <data_writer profile_name="default_data_writer" is_default_profile="true">
+            <qos>
+                <reliability>
+                    <kind>RELIABLE</kind>
+                    <max_blocking_time>
+                        <sec>5</sec>
+                        <nanosec>0</nanosec>
+                    </max_blocking_time>
+                </reliability>
+            </qos>
+        </data_writer>
+    </profiles>
 </dds>
