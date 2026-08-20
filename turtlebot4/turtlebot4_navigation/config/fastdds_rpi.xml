@@ -19,5 +19,15 @@
                 <useBuiltinTransports>false</useBuiltinTransports>
             </rtps>
         </participant>
+        <data_writer profile_name="turtlebot4_default_writer" is_default_profile="true">
+            <qos>
+                <publishMode>
+                    <!-- Background send thread: the caller never blocks/times out,
+                         so lifecycle change_state responses can't miss their deadline
+                         when the Pi is saturated during Nav2 bringup. -->
+                    <kind>ASYNCHRONOUS</kind>
+                </publishMode>
+            </qos>
+        </data_writer>
     </profiles>
 </dds>
