@@ -226,7 +226,15 @@ def generate_launch_description():
                 name='lifecycle_manager_navigation',
                 output='screen',
                 arguments=['--ros-args', '--log-level', log_level],
-                parameters=[{'autostart': autostart}, {'node_names': lifecycle_nodes}],
+                # Raise from the 4.0s default: the Pi saturates while activating all
+                # nodes at once, so bond/change_state responses arrive late.
+                parameters=[
+                    {'autostart': autostart},
+                    {'node_names': lifecycle_nodes},
+                    {'bond_timeout': 30.0},
+                    {'attempt_respawn_reconnection': True},
+                    {'bond_respawn_max_duration': 30.0},
+                ],
             ),
         ],
     )
@@ -300,7 +308,13 @@ def generate_launch_description():
                         plugin='nav2_lifecycle_manager::LifecycleManager',
                         name='lifecycle_manager_navigation',
                         parameters=[
-                            {'autostart': autostart, 'node_names': lifecycle_nodes}
+                            {
+                                'autostart': autostart,
+                                'node_names': lifecycle_nodes,
+                                'bond_timeout': 30.0,
+                                'attempt_respawn_reconnection': True,
+                                'bond_respawn_max_duration': 30.0,
+                            }
                         ],
                     ),
                 ],
