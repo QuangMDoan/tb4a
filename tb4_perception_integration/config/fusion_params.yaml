@@ -1,5 +1,5 @@
-# Parameters for camera_lidar_fusion_node
-camera_lidar_fusion_node:
+# Parameters for depth_camera_fusion_node
+depth_camera_fusion_node:
   ros__parameters:
     # Topics
     detection_topic: '/detections'

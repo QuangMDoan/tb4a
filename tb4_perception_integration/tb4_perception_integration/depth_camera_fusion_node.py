@@ -173,11 +173,11 @@ CLASS_COLORS = {
 
 # ── Node ──────────────────────────────────────────────────────────────────────
 
-class CameraLidarFusionNode(Node):
+class DepthCameraFusionNode(Node):
 
     def __init__(self):
         super().__init__(
-            'camera_lidar_fusion_node',
+            'depth_camera_fusion_node',
             automatically_declare_parameters_from_overrides=True,
         )
 
@@ -264,7 +264,7 @@ class CameraLidarFusionNode(Node):
         self.next_track_id = 0
 
         self.get_logger().info(
-            f'CameraLidarFusionNode ready — '
+            f'DepthCameraFusionNode ready — '
             f'det={self.det_topic}, depth={self.depth_topic}, '
             f'out={self.out_topic}')
 
@@ -626,7 +626,7 @@ class CameraLidarFusionNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = CameraLidarFusionNode()
+    node = DepthCameraFusionNode()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

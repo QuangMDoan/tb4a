@@ -30,7 +30,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'camera_lidar_fusion_node = tb4_perception_integration.camera_lidar_fusion_node:main',
+            'depth_camera_fusion_node = tb4_perception_integration.depth_camera_fusion_node:main',
         ],
     },
 )

@@ -23,8 +23,8 @@ def generate_launch_description():
 
     fusion_node = Node(
         package='tb4_perception_integration',
-        executable='camera_lidar_fusion_node',
-        name='camera_lidar_fusion_node',
+        executable='depth_camera_fusion_node',
+        name='depth_camera_fusion_node',
         output='screen',
         parameters=[LaunchConfiguration('params_file'), {
             'publish_debug_markers': LaunchConfiguration('publish_debug_markers'),
