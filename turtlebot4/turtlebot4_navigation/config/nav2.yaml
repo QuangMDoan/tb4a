@@ -169,11 +169,10 @@ local_costmap:
       height: 4
       resolution: 0.06
       transform_tolerance: 0.5
-      # Circular footprint matching the round robot (0.17 m + 1 cm) so inflation can
-      # equal the radius: safe (>= inscribed) without over-inflating the 0.86 m hallway.
-      robot_radius: 0.18
-      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.18: reclaims 1 cm of
-      # corridor clearance so small AMCL yaw drift is less likely to lethal-ize the footprint.
+      # Circular footprint at the true round-robot hull (~0.17 m): reclaims the last
+      # cm of clearance in the 0.86 m hallway. consider_footprint still guards contact.
+      robot_radius: 0.17
+      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.17.
       footprint_padding: 0.0
       plugins: ["static_layer", "obstacle_layer", "perception_layer", "inflation_layer"]
       # Class-aware semantic obstacles from the camera-depth fusion node
@@ -247,9 +246,8 @@ global_costmap:
       robot_base_frame: base_link
       transform_tolerance: 0.5
       robot_radius: 0.18
-      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.18: reclaims 1 cm of
-      # corridor clearance so small AMCL yaw drift is less likely to lethal-ize the footprint.
-      footprint_padding: 0.0
+      # 0.0 (not the 0.7
+      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.17
       resolution: 0.06
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "perception_layer", "inflation_layer"]

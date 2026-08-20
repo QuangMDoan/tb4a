@@ -5,4 +5,7 @@
     <class name="turtlebot4_bt_plugins/RotateAngle" type="turtlebot4_bt_plugins::RotateAngleAction" base_class_type="BT::TreeNode">
         <description>Action node that calls the /rotate_angle action server.</description>
     </class>
+    <class name="turtlebot4_bt_plugins/RandomSelector" type="turtlebot4_bt_plugins::RandomSelector" base_class_type="BT::TreeNode">
+        <description>Control node that ticks one uniformly-random child per entry.</description>
+    </class>
 </library>
