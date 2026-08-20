@@ -13,7 +13,3 @@ yolo_detector_node:
       target_classes:
         - 'person'
         - 'stop sign'
-        - 'chair'
-        - 'dog'
-        - 'cat'
-        - 'bicycle'

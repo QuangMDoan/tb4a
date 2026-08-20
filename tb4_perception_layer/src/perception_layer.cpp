@@ -209,11 +209,12 @@ void PerceptionLayer::updateBounds(
       // Ignore detections stamped on top of the robot so they cannot
       // self-block navigation.
       if (std::hypot(wx - robot_x, wy - robot_y) < min_obstacle_distance_) {return;}
-      // React-distance gate: a persistent keep-out (e.g. stop sign) only enters
-      // the costmap once the robot is within persistent_react_distance_, so a
-      // far-off sign does not reroute the robot early.
-      if (is_persistent && persistent_react_distance_ > 0.0 &&
-        std::hypot(wx - robot_x, wy - robot_y) > persistent_react_distance_) {return;}
+      // React-distance latch: a persistent keep-out enters the costmap only
+      // after the robot has come within persistent_react_distance_ at least
+      // once (see the activation pass below). Once latched it stays, so the
+      // planner commits to the reroute instead of oscillating as the robot
+      // crosses the react boundary.
+      if (is_persistent && persistent_react_distance_ > 0.0 && !obs.activated) {return;}
       double r = obs.radius;
       *min_x = std::min(*min_x, wx - r);
       *min_y = std::min(*min_y, wy - r);
@@ -222,7 +223,18 @@ void PerceptionLayer::updateBounds(
     };
 
   for (const auto & obs : obstacles_) {expand(obs, obstacle_timeout_, false);}
-  for (const auto & obs : persistent_obstacles_) {expand(obs, persistent_timeout_, true);}
+  for (auto & obs : persistent_obstacles_) {
+    // Latch the keep-out on the first cycle the robot is within react distance.
+    if (persistent_react_distance_ > 0.0 && !obs.activated) {
+      double wx, wy;
+      if (transformPoint(obs.frame_id, global_frame, obs.x, obs.y, wx, wy) &&
+        std::hypot(wx - robot_x, wy - robot_y) <= persistent_react_distance_)
+      {
+        obs.activated = true;
+      }
+    }
+    expand(obs, persistent_timeout_, true);
+  }
 }
 
 void PerceptionLayer::updateCosts(
@@ -256,11 +268,10 @@ void PerceptionLayer::updateCosts(
         return;
       }
 
-      // React-distance gate for persistent keep-outs (mirrors updateBounds):
-      // a stop sign only stamps cost once the robot is within react distance.
-      if (is_persistent && persistent_react_distance_ > 0.0 && have_robot_pose_ &&
-        std::hypot(wx - robot_gx_, wy - robot_gy_) > persistent_react_distance_)
-      {
+      // React-distance latch for persistent keep-outs (mirrors updateBounds):
+      // only stamp once the keep-out has been activated by the robot coming
+      // within react distance, then keep stamping so the reroute is committed.
+      if (is_persistent && persistent_react_distance_ > 0.0 && !obs.activated) {
         return;
       }
 

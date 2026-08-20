@@ -44,6 +44,10 @@ private:
     double radius;
     unsigned char cost;
     rclcpp::Time stamp;
+    // Persistent keep-outs only: latched true once the robot has come within
+    // persistent_react_distance_. Prevents the reroute from oscillating as the
+    // robot crosses the react boundary.
+    bool activated{false};
   };
 
   unsigned char costForClass(const std::string & class_id) const;
