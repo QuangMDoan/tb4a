@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  UserPC Fast DDS profile — the SINGLE source of DDS discovery config.
+  Declares SUPER_CLIENT + the discovery server (192.168.86.39:11811) + this PC's
+  interface whitelist (192.168.86.24). ~/.bashrc only points FASTRTPS_DEFAULT_
+  PROFILES_FILE here; it must NOT also set ROS_DISCOVERY_SERVER/ROS_SUPER_CLIENT.
+-->
 <dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
     <profiles>
         <transport_descriptors>
