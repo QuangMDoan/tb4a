@@ -72,6 +72,7 @@ Usage:
   tb4 cat <remote_file_path>
   tb4 scp
   tb4 copyme
+  tb4 copy bashrc
   tb4 square [side_m] [speed_mps]
 
 Examples:
@@ -135,6 +136,7 @@ Examples:
   tb4 cat /opt/ros/jazzy/share/turtlebot4_bringup/config/oakd_pro.yaml
   tb4 scp
   tb4 copyme
+  tb4 copy bashrc
 
 Setup: 
   mkdir -p ~/bin
@@ -767,6 +769,11 @@ copyme_cmd() {
   scp "$HOME/bin/tb4" ubuntu@turtlebot4:/home/ubuntu/bin/tb4
 }
 
+copy_bashrc_cmd() {
+  cp "$HOME/.bashrc" /home/qd/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/bashrc
+  echo "Copied ~/.bashrc -> config/bashrc"
+}
+
 square_cmd() {
   local side="${1:-0.5}"
   local speed="${2:-0.1}"
@@ -1003,6 +1010,13 @@ case "${1:-}" in
   copyme)
     shift
     copyme_cmd "$@"
+    ;;
+  copy)
+    shift
+    case "${1:-}" in
+      bashrc) copy_bashrc_cmd "$@" ;;
+      *) echo "Unknown copy subcommand: ${1:-}"; echo "Usage: tb4 copy bashrc"; exit 1 ;;
+    esac
     ;;
   square)
     shift
