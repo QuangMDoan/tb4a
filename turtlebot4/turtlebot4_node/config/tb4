@@ -41,6 +41,7 @@ Usage:
   tb4 nav2_diag
   tb4 deploy plugins
   tb4 deploy onboard [full]
+  tb4 deploy fastdds
   tb4 onboard up
   tb4 onboard down
   tb4 onboard logs [errors|list|<node>]
@@ -103,6 +104,7 @@ Examples:
   tb4 nav2_diag
   tb4 deploy plugins
   tb4 deploy onboard full
+  tb4 deploy fastdds
   tb4 onboard up
   tb4 onboard down
   tb4 onboard logs [errors|list|<node>]
@@ -378,6 +380,17 @@ deploy_onboard_cmd() {
   echo
   echo "Done. Start navigation onboard:  tb4 onboard up"
   echo "(RViz on the UserPC: tb4 viz)"
+}
+
+deploy_fastdds_cmd() {
+  # Push the robot's Fast DDS profile (async data_writer added, so lifecycle
+  # change_state responses don't time out under Nav2 bringup load) to the Pi.
+  # /etc is root-owned: stage in /tmp then sudo-install, like the oakd config.
+  local local_xml="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/fastdds_rpi.xml"
+  local remote_xml="/etc/turtlebot4/fastdds_rpi.xml"
+  echo "Copying fastdds_rpi.xml from UserPC -> robot:$remote_xml"
+  scp "$local_xml" ubuntu@turtlebot4:/tmp/fastdds_rpi.xml
+  ssh -t ubuntu@turtlebot4 "sudo cp '$remote_xml' '$remote_xml.bak' 2>/dev/null; sudo cp /tmp/fastdds_rpi.xml '$remote_xml' && rm -f /tmp/fastdds_rpi.xml && echo 'Installed. Reload DDS with:  tb4 restart'"
 }
 
 localize_onboard_cmd() {
@@ -885,7 +898,8 @@ case "${1:-}" in
     case "${1:-}" in
       plugins) shift; deploy_plugins_cmd "$@" ;;
       onboard) shift; deploy_onboard_cmd "$@" ;;
-      *) echo "Unknown deploy subcommand: ${1:-}"; echo "Usage: tb4 deploy plugins|onboard [full]"; exit 1 ;;
+      fastdds) shift; deploy_fastdds_cmd "$@" ;;
+      *) echo "Unknown deploy subcommand: ${1:-}"; echo "Usage: tb4 deploy plugins|onboard [full]|fastdds"; exit 1 ;;
     esac
     ;;
   onboard)
