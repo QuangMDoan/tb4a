@@ -134,8 +134,10 @@ alias gz2='gz sim --render-engine ogre'
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=0
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-# Discovery (SUPER_CLIENT + server 192.168.86.39:11811 + interface whitelist) is
-# defined once in this profile; do NOT also set ROS_DISCOVERY_SERVER/ROS_SUPER_CLIENT.
+# Discovery via env (mirrors the robot's setup.bash); the XML profile only tunes
+# the transport whitelist + async writer.
+export ROS_DISCOVERY_SERVER="192.168.86.39:11811;"
+export ROS_SUPER_CLIENT=TRUE
 export FASTRTPS_DEFAULT_PROFILES_FILE="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/fastdds_nav2.xml"
 
 # source ~/turtlebot4_ws/install/local_setup.bash

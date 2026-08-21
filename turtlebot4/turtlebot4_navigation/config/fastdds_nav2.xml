@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!--
-  UserPC Fast DDS profile — the SINGLE source of DDS discovery config.
-  Declares SUPER_CLIENT + the discovery server (192.168.86.39:11811) + this PC's
-  interface whitelist (192.168.86.24). ~/.bashrc only points FASTRTPS_DEFAULT_
-  PROFILES_FILE here; it must NOT also set ROS_DISCOVERY_SERVER/ROS_SUPER_CLIENT.
+  UserPC Fast DDS profile — mirrors the robot's fastdds_rpi.xml: transport
+  whitelist (this PC, 192.168.86.24) + async writer only. Discovery (SUPER_CLIENT
+  + server 192.168.86.39:11811) is set via env in ~/.bashrc (ROS_DISCOVERY_SERVER
+  + ROS_SUPER_CLIENT). Keep the whitelist == this PC's IP.
 -->
 <dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
     <profiles>
@@ -18,25 +18,8 @@
             </transport_descriptor>
         </transport_descriptors>
 
-        <participant profile_name="participant_profile" is_default_profile="true">
+        <participant profile_name="userpc_default_profile" is_default_profile="true">
             <rtps>
-                <builtin>
-                    <discovery_config>
-                        <discoveryProtocol>SUPER_CLIENT</discoveryProtocol>
-                        <discoveryServersList>
-                            <RemoteServer prefix="44.53.00.5f.45.50.52.4f.53.49.4d.41">
-                                <metatrafficUnicastLocatorList>
-                                    <locator>
-                                        <udpv4>
-                                            <address>192.168.86.39</address>
-                                            <port>11811</port>
-                                        </udpv4>
-                                    </locator>
-                                </metatrafficUnicastLocatorList>
-                            </RemoteServer>
-                        </discoveryServersList>
-                    </discovery_config>
-                </builtin>
                 <userTransports>
                     <transport_id>custom_udp</transport_id>
                 </userTransports>
@@ -44,15 +27,11 @@
             </rtps>
         </participant>
 
-        <data_writer profile_name="default_data_writer" is_default_profile="true">
+        <data_writer profile_name="userpc_default_writer" is_default_profile="true">
             <qos>
-                <reliability>
-                    <kind>RELIABLE</kind>
-                    <max_blocking_time>
-                        <sec>5</sec>
-                        <nanosec>0</nanosec>
-                    </max_blocking_time>
-                </reliability>
+                <publishMode>
+                    <kind>ASYNCHRONOUS</kind>
+                </publishMode>
             </qos>
         </data_writer>
     </profiles>
