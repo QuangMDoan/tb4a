@@ -230,7 +230,10 @@ local_costmap:
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
-          obstacle_min_range: 0.0
+          # 0.16 (> sensor range_min 0.15): drop sub-range-min phantom returns (a
+          # self-reflection off the robot) that were marking the robot's own
+          # footprint lethal and wedging it at open junctions.
+          obstacle_min_range: 0.16
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
@@ -296,7 +299,10 @@ global_costmap:
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
-          obstacle_min_range: 0.0
+          # 0.16 (> sensor range_min 0.15): drop sub-range-min phantom returns (a
+          # self-reflection off the robot) that were marking the robot's own
+          # footprint lethal and wedging it at open junctions.
+          obstacle_min_range: 0.16
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
