@@ -138,7 +138,7 @@ export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 # the transport whitelist + async writer.
 export ROS_DISCOVERY_SERVER="192.168.86.39:11811;"
 export ROS_SUPER_CLIENT=TRUE
-export FASTRTPS_DEFAULT_PROFILES_FILE="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/fastdds_nav2.xml"
+export FASTRTPS_DEFAULT_PROFILES_FILE="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/fastdds_host24.xml"
 
 # source ~/turtlebot4_ws/install/local_setup.bash
 source ~/turtlebot4_ws/install/setup.bash
