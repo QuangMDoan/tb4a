@@ -1,39 +1,4 @@
-"""YOLO Detector Node (v 0.02)
-
-Runs YOLOv8 inference on the OAK-D RGB preview stream: receives each
-camera frame, filters detections to a configurable set of target classes,
-and publishes 2D bounding boxes with class labels and confidence scores
-as a Detection2DArray for downstream fusion / planning nodes.
-Optionally publishes an annotated image with drawn bounding boxes for
-live visualization in RViz.
-
-Subscribes to /oakd/rgb/preview/image_raw
-    Msg type: sensor_msgs/msg/Image
-Publishes to /detections 
-    Msg type: vision_msgs/msg/Detection2DArray
-Optional publishes to /detections/image 
-    Msg type: sensor_msgs/msg/Image
-
-Quick Test:
-    Terminal 1: 
-        tb4 undock
-        ssh -t ubuntu@turtlebot4 "sudo systemctl restart turtlebot4.service"
-
-        ros2 topic list
-        ros2 topic info /oakd/rgb/preview/image_raw -v
-
-        timeout 8 ros2 topic hz /oakd/rgb/preview/image_raw --window 10
-
-    Terminal 2: 
-        tb4 yolo viz
-
-    Terminal 3:         
-        ros2 topic list
-        ros2 topic info /detections -v
-        timeout 8 ros2 topic hz /detections --window 10
-    
-    Results:
-        https://docs.google.com/document/d/1JeNdLnQ-b9u_FkvoEUyvisUP6JDX1xfCAqdooLeP6cg/edit?tab=t.0
+"""YOLO Detector Node (v 0.04)
 """
 
 import cv2
@@ -49,12 +14,6 @@ from vision_msgs.msg import (
     Detection2DArray,
     ObjectHypothesisWithPose,
 )
-
-# Optional: only needed when image_transport == 'ffmpeg' (OAK-D low_bandwidth).
-try:
-    from ffmpeg_image_transport_msgs.msg import FFMPEGPacket
-except ImportError:
-    FFMPEGPacket = None
 
 from ultralytics import YOLO
 from cv_bridge import CvBridge
@@ -75,9 +34,7 @@ class YoloDetectorNode(Node):
         ])
         self.declare_parameter('publish_visualisation', False)
         self.declare_parameter('visualisation_topic', '/detections/image')
-        # 'raw' subscribes to sensor_msgs/Image; 'ffmpeg' subscribes to the
-        # OAK-D low_bandwidth MJPEG stream (<image_topic>/ffmpeg).
-        self.declare_parameter('image_transport', 'raw')
+        self.declare_parameter('image_transport', 'compressed')
         model_path = self.get_parameter('model_path').value
         self.conf_threshold = self.get_parameter('confidence_threshold').value
         image_topic = self.get_parameter('image_topic').value
@@ -93,9 +50,9 @@ class YoloDetectorNode(Node):
         self.get_logger().info(f'Loading YOLO model: {model_path}')
         self.model = YOLO(model_path)
         self.model.to(device)
-        self.class_names = self.model.names  # {0: 'person', 1: 'bicycle', ...}
+        self.class_names = self.model.names  
 
-        # Build a set of target class indices for fast lookup
+        # Build a set of target class indices for fast lookup.
         self.target_indices: set[int] = set()
         for idx, name in self.class_names.items():
             if name in self.target_classes:
@@ -127,16 +84,6 @@ class YoloDetectorNode(Node):
             self.image_sub = self.create_subscription(
                 CompressedImage, subscribed_topic, self.compressed_callback, sensor_qos
             )
-        elif self.image_transport == 'ffmpeg':
-            if FFMPEGPacket is None:
-                raise RuntimeError(
-                    "image_transport 'ffmpeg' requires ffmpeg_image_transport_msgs "
-                    '(sudo apt install ros-jazzy-ffmpeg-image-transport-msgs)'
-                )
-            subscribed_topic = image_topic + '/ffmpeg'
-            self.image_sub = self.create_subscription(
-                FFMPEGPacket, subscribed_topic, self.ffmpeg_callback, sensor_qos
-            )
         else:
             subscribed_topic = image_topic
             self.image_sub = self.create_subscription(
@@ -156,13 +103,13 @@ class YoloDetectorNode(Node):
     # ------------------------------------------------------------------
 
     def image_callback(self, msg: Image):
-        if self._rate_limited():
+        if self.rate_limited():
             return
         cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         self.process_frame(cv_image, msg.header)
 
     def compressed_callback(self, msg: CompressedImage):
-        if self._rate_limited():
+        if self.rate_limited():
             return
         cv_image = cv2.imdecode(np.frombuffer(msg.data, np.uint8), cv2.IMREAD_COLOR)
         if cv_image is None:
@@ -170,19 +117,7 @@ class YoloDetectorNode(Node):
             return
         self.process_frame(cv_image, msg.header)
 
-    def ffmpeg_callback(self, msg):
-        if self._rate_limited():
-            return
-        # OAK-D low_bandwidth uses MJPEG, so each packet is a standalone JPEG frame.
-        cv_image = cv2.imdecode(np.frombuffer(msg.data, np.uint8), cv2.IMREAD_COLOR)
-        if cv_image is None:
-            self.get_logger().warn(
-                f'Failed to decode FFMPEG packet (encoding={msg.encoding}); expected MJPEG.'
-            )
-            return
-        self.process_frame(cv_image, msg.header)
-
-    def _rate_limited(self) -> bool:
+    def rate_limited(self) -> bool:
         now = self.get_clock().now()
         if (now - self.last_publish_time).nanoseconds < self.min_period_ns:
             return True
@@ -191,47 +126,22 @@ class YoloDetectorNode(Node):
 
     def process_frame(self, cv_image: np.ndarray, header):
 
-        # Run inference
+        # Traffic-sign YOLO model — STOP + DO NOT ENTER.
         results = self.model(cv_image, conf=self.conf_threshold, verbose=False)
 
-        # Build Detection2DArray
         det_array = Detection2DArray()
         det_array.header = header
 
-        if len(results) == 0 or results[0].boxes is None:
-            self.detection_pub.publish(det_array)
-            if self.vis_pub is not None:
-                self.publish_visualisation(cv_image, det_array)
-            return
-
-        boxes = results[0].boxes
-        for box in boxes:
-            cls_id = int(box.cls[0].item())
-
-            # Skip categories we don't care about
-            if cls_id not in self.target_indices:
-                continue
-
-            confidence = float(box.conf[0].item())
-
-            # xyxy bounding box (pixels)
-            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-
-            det = Detection2D()
-            det.header = header
-
-            # Center + size (Detection2D convention)
-            det.bbox.center.position.x = float((x1 + x2) / 2.0)
-            det.bbox.center.position.y = float((y1 + y2) / 2.0)
-            det.bbox.size_x = float(x2 - x1)
-            det.bbox.size_y = float(y2 - y1)
-
-            hyp = ObjectHypothesisWithPose()
-            hyp.hypothesis.class_id = self.class_names[cls_id]
-            hyp.hypothesis.score = confidence
-            det.results.append(hyp)
-
-            det_array.detections.append(det)
+        boxes = results[0].boxes if (results and results[0].boxes is not None) else None
+        if boxes is not None:
+            for box in boxes:
+                cls_id = int(box.cls[0].item())
+                if cls_id not in self.target_indices:
+                    continue
+                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                self.add_detection(
+                    det_array, header, self.class_names[cls_id],
+                    float(box.conf[0].item()), x1, y1, x2, y2)
 
         self.detection_pub.publish(det_array)
 
@@ -247,6 +157,22 @@ class YoloDetectorNode(Node):
             )
             self.get_logger().debug(f'Published {len(det_array.detections)} detections: {summary}')
 
+    # ------------------------------------------------------------------
+    # Detection helpers
+    # ------------------------------------------------------------------
+
+    def add_detection(self, det_array, header, class_id, score, x1, y1, x2, y2):
+        det = Detection2D()
+        det.header = header
+        det.bbox.center.position.x = float((x1 + x2) / 2.0)
+        det.bbox.center.position.y = float((y1 + y2) / 2.0)
+        det.bbox.size_x = float(x2 - x1)
+        det.bbox.size_y = float(y2 - y1)
+        hyp = ObjectHypothesisWithPose()
+        hyp.hypothesis.class_id = class_id
+        hyp.hypothesis.score = float(score)
+        det.results.append(hyp)
+        det_array.detections.append(det)
 
     # ------------------------------------------------------------------
     # Visualisation helper

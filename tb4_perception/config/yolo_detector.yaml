@@ -1,9 +1,11 @@
 yolo_detector_node:
   ros__parameters:
-      model_path: '/home/qd/turtlebot4_ws/yolov8n.pt'
-      # Raised 0.6 -> 0.75 to cut corner/wall false positives (e.g. a wall chunk
-      # misread as 'person') that were wedging the robot in tight corridors.
-      confidence_threshold: 0.75 
+      # Single GTSRB traffic-sign model with its two sign classes renamed in the
+      # weights to our canonical ids ('stop sign', 'do not enter'). No person.
+      model_path: '/home/qd/turtlebot4_ws/models/traffic_signs.pt'
+      # 0.7: raised from 0.5 to cut false positives (e.g. a red object misread
+      # as 'do not enter'), which matter because that keep-out is lethal+persistent.
+      confidence_threshold: 0.7
       image_topic: '/oakd/rgb/preview/image_raw'
       # 'compressed' decodes the JPEG image_transport stream (<image_topic>/compressed).
       image_transport: 'compressed'
@@ -12,6 +14,7 @@ yolo_detector_node:
       publish_rate_limit: 10.0
       publish_visualisation: false 
       visualisation_topic: '/detections/image'
+      # The model already emits our canonical ids after the in-weights rename.
       target_classes:
-        - 'person'
         - 'stop sign'
+        - 'do not enter'

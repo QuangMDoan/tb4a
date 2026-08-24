@@ -11,9 +11,9 @@ bt_navigator:
     wait_for_service_timeout: 3000
     action_server_result_timeout: 900.0
     # Custom BT nodes: turtlebot4_bt_plugins (IsGoalBehind + RotateAngle, rotate-first)
-    # and is_stop_sign_nearby_bt_node (IsStopSignNearby). The stop-sign tree pauses
-    # navigation when a 'stop sign' from /semantic_obstacles comes within range.
-    plugin_lib_names: ["turtlebot4_bt_plugins", "is_stop_sign_nearby_bt_node"]
+    # and is_sign_nearby_bt_node (IsSignNearby). It pauses navigation when a
+    # configured sign from /semantic_obstacles comes within range.
+    plugin_lib_names: ["turtlebot4_bt_plugins", "is_sign_nearby_bt_node"]
     default_nav_to_pose_bt_xml: "/home/qd/turtlebot4_ws/install/turtlebot4_navigation/share/turtlebot4_navigation/behavior_trees/navigate_to_pose_rotate_first_stopsign.xml"
     navigators: ["navigate_to_pose"]
     navigate_to_pose:
@@ -190,14 +190,15 @@ local_costmap:
         # collision that makes MPPI fail to compute a path in a tight corridor.
         default_cost: 200
         default_radius: 0.3
-        class_names: ['person', 'chair', 'dog', 'cat', 'bicycle', 'stop sign']
-        # 'stop sign' = strong deterrent (250, just below inscribed 253): the planner
-        # reroutes around its keep-out, but it is NOT lethal, so the inflation_layer
-        # (which runs after this one) won't wrap it in an inscribed ring and MPPI /
-        # planner can still escape if the robot ends up beside it (no hard trap).
-        class_costs: [200, 200, 200, 180, 200, 250]
-        class_radii: [0.25, 0.2, 0.2, 0.15, 0.35, 0.5]
-        persistent_classes: ['stop sign']
+        class_names: ['stop sign', 'do not enter']
+        # Fallbacks only (fusion writes cost/radius per detection, which wins).
+        # 'stop sign' = tiny non-blocking marker (the BT does the 2 s temporal
+        # stop, then the robot drives THROUGH). 'do not enter' = lethal 254
+        # blocking keep-out so the planner reroutes AROUND it; persisted in the
+        # map frame so the block is remembered after it leaves view.
+        class_costs: [120, 254]
+        class_radii: [0.08, 0.5]
+        persistent_classes: ['do not enter']
         persistent_frame: "map"
         persistent_timeout: 600.0
         # A stop sign only becomes a costmap obstacle (-> reroute) once the robot
@@ -269,14 +270,15 @@ global_costmap:
         # collision that makes MPPI fail to compute a path in a tight corridor.
         default_cost: 200
         default_radius: 0.3
-        class_names: ['person', 'chair', 'dog', 'cat', 'bicycle', 'stop sign']
-        # 'stop sign' = strong deterrent (250, just below inscribed 253): the planner
-        # reroutes around its keep-out, but it is NOT lethal, so the inflation_layer
-        # (which runs after this one) won't wrap it in an inscribed ring and MPPI /
-        # planner can still escape if the robot ends up beside it (no hard trap).
-        class_costs: [200, 200, 200, 180, 200, 250]
-        class_radii: [0.25, 0.2, 0.2, 0.15, 0.35, 0.5]
-        persistent_classes: ['stop sign']
+        class_names: ['stop sign', 'do not enter']
+        # Fallbacks only (fusion writes cost/radius per detection, which wins).
+        # 'stop sign' = tiny non-blocking marker (the BT does the 2 s temporal
+        # stop, then the robot drives THROUGH). 'do not enter' = lethal 254
+        # blocking keep-out so the planner reroutes AROUND it; persisted in the
+        # map frame so the block is remembered after it leaves view.
+        class_costs: [120, 254]
+        class_radii: [0.08, 0.5]
+        persistent_classes: ['do not enter']
         persistent_frame: "map"
         persistent_timeout: 600.0
         # A stop sign only becomes a costmap obstacle (-> reroute) once the robot

@@ -32,16 +32,15 @@ depth_camera_fusion_node:
 
     # Class-specific arrays (parallel)
     class_names:
-      - 'person'
       - 'stop sign'
+      - 'do not enter'
     class_radii:
-      - 0.3
-      - 0.5
-    # Non-lethal (<253). The fusion node writes these into the /semantic_obstacles
-    # 'cost' field, which the PerceptionLayer USES OVER its own nav2.yaml
-    # class_costs — so these are authoritative. Keeping the stop sign < 253 lets
-    # the keep-out deter/reroute without the inflation ring + footprint check
-    # hard-trapping the robot beside it.
+      - 0.08     # STOP: negligible keep-out -> robot drives THROUGH after the 2 s stop
+      - 0.5      # DO NOT ENTER: blocking keep-out -> planner reroutes AROUND it
+    # Non-lethal (<253) obstacles deter/reroute without hard-trapping; lethal
+    # (254) forces a full reroute. The fusion node writes these into the
+    # /semantic_obstacles 'cost' field, which the PerceptionLayer USES OVER its
+    # nav2.yaml class_costs, so these are authoritative.
     class_costs:
-      - 200.0   # person
-      - 250.0   # stop sign
+      - 120.0   # stop sign  (non-blocking; the BT handles the temporal stop)
+      - 254.0   # do not enter (lethal -> robot must not pass, reroute)

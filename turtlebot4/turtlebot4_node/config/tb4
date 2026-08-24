@@ -311,7 +311,7 @@ nav2_cmd() {
 deploy_plugins_cmd() {
   # Nav2 runs onboard the robot (Pi). It loads custom overlay packages:
   #   - turtlebot4_bt_plugins : IsGoalBehind + RotateAngle BT nodes (rotate-first).
-  #   - tb4_perception_layer  : PerceptionLayer costmap plugin + IsStopSignNearby
+  #   - tb4_perception_layer  : PerceptionLayer costmap plugin + IsSignNearby
   #     BT node + SemanticObstacleArray msgs (stop-sign / semantic obstacles).
   local pkgs=(
     "$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_bt_plugins"

@@ -52,32 +52,32 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_type
 target_link_libraries(perception_layer "${cpp_typesupport_target}")
 
 # ── BT condition node shared library ──────────────────────────
-add_library(is_stop_sign_nearby_bt_node SHARED
-  src/is_stop_sign_nearby.cpp
+add_library(is_sign_nearby_bt_node SHARED
+  src/is_sign_nearby.cpp
 )
 
-target_include_directories(is_stop_sign_nearby_bt_node PUBLIC
+target_include_directories(is_sign_nearby_bt_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
 
-target_compile_features(is_stop_sign_nearby_bt_node PUBLIC cxx_std_17)
+target_compile_features(is_sign_nearby_bt_node PUBLIC cxx_std_17)
 
 # Ensure BT_RegisterNodesFromPlugin symbol is exported
-set_target_properties(is_stop_sign_nearby_bt_node PROPERTIES
+set_target_properties(is_sign_nearby_bt_node PROPERTIES
   CXX_VISIBILITY_PRESET default
   C_VISIBILITY_PRESET default
 )
 
-target_compile_definitions(is_stop_sign_nearby_bt_node PRIVATE BT_PLUGIN_EXPORT)
+target_compile_definitions(is_sign_nearby_bt_node PRIVATE BT_PLUGIN_EXPORT)
 
-ament_target_dependencies(is_stop_sign_nearby_bt_node
+ament_target_dependencies(is_sign_nearby_bt_node
   rclcpp
   behaviortree_cpp
   tf2_ros
 )
 
-target_link_libraries(is_stop_sign_nearby_bt_node "${cpp_typesupport_target}")
+target_link_libraries(is_sign_nearby_bt_node "${cpp_typesupport_target}")
 
 # ── Plugin registration ───────────────────────────────────────
 pluginlib_export_plugin_description_file(nav2_costmap_2d plugins/perception_layer_plugin.xml)
@@ -89,7 +89,7 @@ install(
 )
 
 install(
-  TARGETS perception_layer is_stop_sign_nearby_bt_node
+  TARGETS perception_layer is_sign_nearby_bt_node
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -111,7 +111,7 @@ endif()
 
 # ── Export ────────────────────────────────────────────────────
 ament_export_include_directories(include/${PROJECT_NAME})
-ament_export_libraries(perception_layer is_stop_sign_nearby_bt_node)
+ament_export_libraries(perception_layer is_sign_nearby_bt_node)
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_export_dependencies(
   rclcpp

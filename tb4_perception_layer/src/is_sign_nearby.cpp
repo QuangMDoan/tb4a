@@ -1,6 +1,7 @@
-#include "tb4_perception_layer/is_stop_sign_nearby.hpp"
+#include "tb4_perception_layer/is_sign_nearby.hpp"
 
 #include <cmath>
+#include <sstream>
 #include <string>
 
 #include "behaviortree_cpp/bt_factory.h"
@@ -9,14 +10,14 @@
 namespace tb4_perception_layer
 {
 
-IsStopSignNearby::IsStopSignNearby(
+IsSignNearby::IsSignNearby(
   const std::string & name,
   const BT::NodeConfiguration & conf)
 : BT::ConditionNode(name, conf)
 {
 }
 
-BT::NodeStatus IsStopSignNearby::tick()
+BT::NodeStatus IsSignNearby::tick()
 {
   if (!initialized_) {
     // Get the shared ROS node from the BT blackboard
@@ -33,21 +34,51 @@ BT::NodeStatus IsStopSignNearby::tick()
     std::string topic = "/semantic_obstacles";
     getInput("semantic_topic", topic);
 
+    // Sign classes that trigger the 2 s stop (both STOP and DO NOT ENTER stop;
+    // the drive-through vs reroute difference comes from the costmap keep-out).
+    std::string classes_csv = "stop sign,do not enter";
+    getInput("trigger_classes", classes_csv);
+    std::stringstream cs(classes_csv);
+    std::string item;
+    while (std::getline(cs, item, ',')) {
+      size_t a = item.find_first_not_of(" \t");
+      size_t b = item.find_last_not_of(" \t");
+      if (a != std::string::npos) {
+        trigger_classes_.insert(item.substr(a, b - a + 1));
+      }
+    }
+
+    // BEST_EFFORT to match the fusion publisher's effective delivery across the
+    // Fast-DDS discovery-server/async-writer link: a RELIABLE reader gets no
+    // cross-machine delivery here, while the BEST_EFFORT costmap readers do.
+    rclcpp::QoS qos(rclcpp::KeepLast(10));
+    qos.best_effort();
+    callback_group_ = node_->create_callback_group(
+      rclcpp::CallbackGroupType::MutuallyExclusive, false);
+    callback_group_executor_.add_callback_group(
+      callback_group_, node_->get_node_base_interface());
+    rclcpp::SubscriptionOptions sub_option;
+    sub_option.callback_group = callback_group_;
     sub_ = node_->create_subscription<msg::SemanticObstacleArray>(
-      topic, 10,
-      std::bind(&IsStopSignNearby::obstacleCallback, this,
-        std::placeholders::_1));
+      topic, qos,
+      std::bind(&IsSignNearby::obstacleCallback, this,
+        std::placeholders::_1),
+      sub_option);
 
     RCLCPP_INFO(node_->get_logger(),
-      "IsStopSignNearby: listening on '%s', threshold=%.1f m, rearm=%.1f s",
-      topic.c_str(), distance_threshold_, rearm_clear_time_);
+      "IsSignNearby: listening on '%s', threshold=%.1f m, rearm=%.1f s, "
+      "classes=[%s]",
+      topic.c_str(), distance_threshold_, rearm_clear_time_, classes_csv.c_str());
 
     initialized_ = true;
   }
 
+  // Service our own subscription — the BT's shared node executor does not.
+  callback_group_executor_.spin_some();
+
   std::lock_guard<std::mutex> lock(mutex_);
 
-  // Debounced "nearby": true if a stop sign was seen within the threshold
+  // Debounced "nearby": true if a trigger sign was seen within the threshold
   // recently (within rearm_clear_time_ seconds). This absorbs detection
   // flicker so the latch does not re-fire spuriously.
   const rclcpp::Time now = node_->get_clock()->now();
@@ -64,7 +95,7 @@ BT::NodeStatus IsStopSignNearby::tick()
     // Rising edge — fire exactly once, then suppress until re-armed.
     armed_ = false;
     RCLCPP_WARN(node_->get_logger(),
-      "Stop sign detected nearby! Triggering single hard stop + replan.");
+      "Sign detected nearby! Triggering single hard stop + replan.");
     return BT::NodeStatus::SUCCESS;
   }
 
@@ -72,16 +103,12 @@ BT::NodeStatus IsStopSignNearby::tick()
   return BT::NodeStatus::FAILURE;
 }
 
-void IsStopSignNearby::obstacleCallback(
+void IsSignNearby::obstacleCallback(
   const tb4_perception_layer::msg::SemanticObstacleArray::SharedPtr msg)
 {
-  // Get robot position from TF via the blackboard. The obstacles carry their
-  // own frame (the fusion node publishes in 'odom'), so look the robot up in
-  // THAT frame — comparing an odom-frame obstacle to a map-frame robot pose
-  // yields a wrong distance whenever map and odom are offset.
+  std::lock_guard<std::mutex> lock(mutex_);
+
   double robot_x = 0.0, robot_y = 0.0;
-  bool tf_ok = false;
-  std::string tf_err;
   std::string obs_frame = msg->header.frame_id;
   try {
     auto tf_buffer = config().blackboard->get<
@@ -96,41 +123,24 @@ void IsStopSignNearby::obstacleCallback(
         obs_frame, "base_link", tf2::TimePointZero);
       robot_x = transform.transform.translation.x;
       robot_y = transform.transform.translation.y;
-      tf_ok = true;
-    } else {
-      tf_err = "blackboard 'tf_buffer' is null";
     }
-  } catch (const std::exception & e) {
-    tf_err = e.what();
+  } catch (const std::exception &) {
+    // If TF fails, use (0,0) — conservative fallback.
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-
-  double min_sign_dist = -1.0;
-  int n_signs = 0;
   for (const auto & obs : msg->obstacles) {
-    if (obs.class_id != "stop sign") {
+    if (trigger_classes_.find(obs.class_id) == trigger_classes_.end()) {
       continue;
     }
-    ++n_signs;
     double dx = obs.x - robot_x;
     double dy = obs.y - robot_y;
     double dist = std::hypot(dx, dy);
-    if (min_sign_dist < 0.0 || dist < min_sign_dist) {
-      min_sign_dist = dist;
-    }
     if (dist <= distance_threshold_) {
       // Refresh the "last seen nearby" timestamp used by the debounce.
       last_nearby_stamp_ = node_->get_clock()->now();
+      return;
     }
   }
-
-  // TEMP DIAGNOSTIC: shows exactly what the onboard node computes.
-  RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-    "IsStopSignNearby DBG: tf_ok=%d robot(%s)=(%.2f,%.2f) n_signs=%d "
-    "min_dist=%.2f thr=%.2f tf_err='%s'",
-    tf_ok, obs_frame.c_str(), robot_x, robot_y, n_signs, min_sign_dist,
-    distance_threshold_, tf_err.c_str());
 }
 
 }  // namespace tb4_perception_layer
@@ -138,6 +148,6 @@ void IsStopSignNearby::obstacleCallback(
 #include "behaviortree_cpp/bt_factory.h"
 BT_REGISTER_NODES(factory)
 {
-  factory.registerNodeType<tb4_perception_layer::IsStopSignNearby>(
-    "IsStopSignNearby");
+  factory.registerNodeType<tb4_perception_layer::IsSignNearby>(
+    "IsSignNearby");
 }
