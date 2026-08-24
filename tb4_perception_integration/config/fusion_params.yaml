@@ -33,22 +33,15 @@ depth_camera_fusion_node:
     # Class-specific arrays (parallel)
     class_names:
       - 'person'
-      - 'chair'
-      - 'dog'
-      - 'cat'
-      - 'bicycle'
       - 'stop sign'
     class_radii:
       - 0.3
-      - 0.25
-      - 0.2
-      - 0.15
-      - 0.4
       - 0.5
+    # Non-lethal (<253). The fusion node writes these into the /semantic_obstacles
+    # 'cost' field, which the PerceptionLayer USES OVER its own nav2.yaml
+    # class_costs — so these are authoritative. Keeping the stop sign < 253 lets
+    # the keep-out deter/reroute without the inflation ring + footprint check
+    # hard-trapping the robot beside it.
     class_costs:
-      - 254.0
-      - 254.0
-      - 200.0
-      - 180.0
-      - 254.0
-      - 254.0
+      - 200.0   # person
+      - 250.0   # stop sign

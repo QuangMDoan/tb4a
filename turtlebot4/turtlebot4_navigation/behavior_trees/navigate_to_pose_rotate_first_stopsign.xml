@@ -27,7 +27,9 @@
             <ReactiveSequence name="StopSignGuardedNavigation">
                 <Fallback name="StopSignGate">
                     <Inverter>
-                        <IsStopSignNearby distance_threshold="1.5" semantic_topic="/semantic_obstacles" global_frame="map" rearm_clear_time="1.5"/>
+                        <!-- 2.5 m: the perception keep-out (r=0.5 + inflation) routes the
+                             robot ~2 m wide of the sign, so a 1.5 m trigger was never reached. -->
+                        <IsStopSignNearby distance_threshold="2.5" semantic_topic="/semantic_obstacles" global_frame="map" rearm_clear_time="1.5"/>
                     </Inverter>
                     <Wait wait_duration="2.0"/>
                 </Fallback>

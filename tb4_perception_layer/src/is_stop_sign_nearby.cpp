@@ -80,11 +80,13 @@ void IsStopSignNearby::obstacleCallback(
   // THAT frame — comparing an odom-frame obstacle to a map-frame robot pose
   // yields a wrong distance whenever map and odom are offset.
   double robot_x = 0.0, robot_y = 0.0;
+  bool tf_ok = false;
+  std::string tf_err;
+  std::string obs_frame = msg->header.frame_id;
   try {
     auto tf_buffer = config().blackboard->get<
       std::shared_ptr<tf2_ros::Buffer>>("tf_buffer");
     if (tf_buffer) {
-      std::string obs_frame = msg->header.frame_id;
       if (obs_frame.empty()) {
         obs_frame = "map";
         getInput("global_frame", obs_frame);
@@ -94,26 +96,41 @@ void IsStopSignNearby::obstacleCallback(
         obs_frame, "base_link", tf2::TimePointZero);
       robot_x = transform.transform.translation.x;
       robot_y = transform.transform.translation.y;
+      tf_ok = true;
+    } else {
+      tf_err = "blackboard 'tf_buffer' is null";
     }
-  } catch (...) {
-    // If TF fails, use (0,0) — conservative fallback
+  } catch (const std::exception & e) {
+    tf_err = e.what();
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
 
+  double min_sign_dist = -1.0;
+  int n_signs = 0;
   for (const auto & obs : msg->obstacles) {
     if (obs.class_id != "stop sign") {
       continue;
     }
+    ++n_signs;
     double dx = obs.x - robot_x;
     double dy = obs.y - robot_y;
     double dist = std::hypot(dx, dy);
+    if (min_sign_dist < 0.0 || dist < min_sign_dist) {
+      min_sign_dist = dist;
+    }
     if (dist <= distance_threshold_) {
       // Refresh the "last seen nearby" timestamp used by the debounce.
       last_nearby_stamp_ = node_->get_clock()->now();
-      return;
     }
   }
+
+  // TEMP DIAGNOSTIC: shows exactly what the onboard node computes.
+  RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+    "IsStopSignNearby DBG: tf_ok=%d robot(%s)=(%.2f,%.2f) n_signs=%d "
+    "min_dist=%.2f thr=%.2f tf_err='%s'",
+    tf_ok, obs_frame.c_str(), robot_x, robot_y, n_signs, min_sign_dist,
+    distance_threshold_, tf_err.c_str());
 }
 
 }  // namespace tb4_perception_layer

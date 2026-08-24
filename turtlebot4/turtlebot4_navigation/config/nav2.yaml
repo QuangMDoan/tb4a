@@ -212,9 +212,9 @@ local_costmap:
         # Gentler slope (was 5.0) + wider radius (was 0.19) give MPPI a smooth
         # centering gradient across the ~0.86 m hallway instead of a near-binary
         # wall, so it holds the corridor centre and clips inscribed cost less at
-        # corners. 0.30 < half-corridor (0.43 m) so the centre stays non-lethal.
+        # corners. 0.25 < half-corridor (0.43 m) so the centre stays non-lethal.
         cost_scaling_factor: 3.0
-        inflation_radius: 0.30
+        inflation_radius: 0.25
       obstacle_layer:
         # 2D layer (not VoxelLayer): the only source is the 2D /scan, and voxel Z bounds
         # broke clearing when odom Z drift pushed the sensor origin below origin_z.
@@ -310,22 +310,22 @@ global_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         # Gentler slope (was 5.0) + wider radius (was 0.19) give the planner a
         # smooth centering gradient across the ~0.86 m hallway instead of a
-        # near-binary wall. 0.30 < half-corridor (0.43 m) so the centre stays
+        # near-binary wall. 0.25 < half-corridor (0.43 m) so the centre stays
         # non-lethal.
         cost_scaling_factor: 3.0
-        inflation_radius: 0.30
+        inflation_radius: 0.25
       always_send_full_costmap: true
 
 planner_server:
   ros__parameters:
     enable_stamped_cmd_vel: true
-    #expected_planner_frequency: 20.0
+    # expected_planner_frequency: 20.0
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"
       # Accept a nearby reachable pose when the exact goal is in inflated/lethal space.
       tolerance: 0.75
-      use_astar: false
+      use_astar: true
       allow_unknown: true
 
 smoother_server:
