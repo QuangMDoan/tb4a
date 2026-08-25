@@ -25,7 +25,7 @@ bt_navigator:
 controller_server:
   ros__parameters:
     enable_stamped_cmd_vel: true
-    controller_frequency: 20.0
+    controller_frequency: 15.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
@@ -48,11 +48,12 @@ controller_server:
       yaw_goal_tolerance: 0.25
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
-      # Coexist profile (perception + nav2 on the Pi): 40/600 instead of 50/1000
-      # to free CPU for the OAK-D pipeline. Revert to 50/1000 for nav-only quality.
-      time_steps: 40
-      model_dt: 0.05
-      batch_size: 600
+      # Coexist profile (perception + nav2 on the Pi): 30/400 instead of 50/1000
+      # to free CPU for the OAK-D pipeline. model_dt 0.0667 keeps the ~2 s horizon
+      # at controller_frequency 15. Revert to 50/1000 for nav-only quality.
+      time_steps: 30
+      model_dt: 0.0667
+      batch_size: 400
       # Matched to the velocity_smoother accel caps (1.0 / 1.5) so MPPI plans at the
       # achievable ramp rate instead of commanding accels the smoother then clamps.
       ax_max: 3.0
@@ -65,9 +66,10 @@ controller_server:
       # Matched to velocity_smoother's linear caps (0.35 / -0.35) so MPPI plans at the
       # achievable speed instead of optimizing trajectories the smoother then clamps.
       vx_max: 0.35
-      # Forward-only: no reverse in path following, so following a 'go back' route
-      # makes the robot rotate ~180 deg and drive forward instead of reversing.
-      vx_min: 0.0
+      # Small reverse allowed so MPPI can reposition to clear tight corners
+      # (pure forward-only stalls at the TV-room/hallway corner). Normal driving
+      # stays forward; PreferForwardCritic keeps reverse to a minimum.
+      vx_min: -0.15
       vy_max: 0.5
       # Matched to velocity_smoother's 1.0 rad/s cap so MPPI plans at the achievable
       # rotation rate instead of commanding turns the smoother then clamps (adds lag).
@@ -106,8 +108,9 @@ controller_server:
       PreferForwardCritic:
         enabled: true
         cost_power: 1
-        # Weighted up (was 0.0) to favour rotate-then-forward over reversing.
-        cost_weight: 5.0
+        # 2.5: still prefer forward, but low enough to let the small reverse
+        # (vx_min -0.15) reposition the robot through tight corners.
+        cost_weight: 2.5
         threshold_to_consider: 0.5
       CostCritic:
         enabled: true
@@ -399,10 +402,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    # Linear min 0.0 = forward-only (matches MPPI vx_min 0.0): the smoother won't
-    # pass reverse commands, so the robot rotates to face its route instead of reversing.
+    # Linear min -0.15 matches MPPI vx_min: allows the small reverse used to
+    # reposition through tight corners, while normal driving stays forward.
     max_velocity: [0.35, 0.0, 1.0]
-    min_velocity: [0.0, 0.0, -1.0]
+    min_velocity: [-0.15, 0.0, -1.0]
     # Softened so yaw/linear ramp in rather than snapping to the cap in ~0.15 s:
     # gentler onset reduces wheel slip and sudden scan jumps that disturb AMCL.
     max_accel: [2.5, 0.0, 3.2]
