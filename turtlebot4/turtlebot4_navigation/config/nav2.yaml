@@ -171,8 +171,8 @@ local_costmap:
       transform_tolerance: 0.5
       # Circular footprint at the true round-robot hull (~0.17 m): reclaims the last
       # cm of clearance in the 0.86 m hallway. consider_footprint still guards contact.
-      robot_radius: 0.17
-      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.17.
+      robot_radius: 0.175
+      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.175.
       footprint_padding: 0.0
       plugins: ["static_layer", "obstacle_layer", "perception_layer", "inflation_layer"]
       # Class-aware semantic obstacles from the camera-depth fusion node
@@ -220,7 +220,7 @@ local_costmap:
         # wall, so it holds the corridor centre and clips inscribed cost less at
         # corners. 0.25 < half-corridor (0.43 m) so the centre stays non-lethal.
         cost_scaling_factor: 3.0
-        inflation_radius: 0.25
+        inflation_radius: 0.27
       obstacle_layer:
         # 2D layer (not VoxelLayer): the only source is the 2D /scan, and voxel Z bounds
         # broke clearing when odom Z drift pushed the sensor origin below origin_z.
@@ -254,8 +254,8 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       transform_tolerance: 0.5
-      robot_radius: 0.18
-      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.18.
+      robot_radius: 0.175
+      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.175.
       footprint_padding: 0.0
       resolution: 0.06
       track_unknown_space: true
@@ -325,7 +325,7 @@ global_costmap:
         # near-binary wall. 0.25 < half-corridor (0.43 m) so the centre stays
         # non-lethal.
         cost_scaling_factor: 3.0
-        inflation_radius: 0.25
+        inflation_radius: 0.27
       always_send_full_costmap: true
 
 planner_server:
