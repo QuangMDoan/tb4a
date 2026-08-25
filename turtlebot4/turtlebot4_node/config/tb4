@@ -359,14 +359,6 @@ deploy_onboard_cmd() {
 
   rm -f "$tmp_nav2"
 
-  # Also push the OAK-D config to the robot (same as 'tb4 oakd pc2pi').
-  # oakd_remote_cfg is under /opt (root-owned); stage in /tmp then sudo-install.
-  local oakd_local="$HOME/turtlebot4_ws/src/tb4_perception/config/oakd_pro.yaml"
-  local oakd_remote_cfg="/opt/ros/jazzy/share/turtlebot4_bringup/config/oakd_pro.yaml"
-  echo "Copying oakd_pro.yaml from UserPC -> robot:$oakd_remote_cfg"
-  scp "$oakd_local" ubuntu@turtlebot4:/tmp/oakd_pro.yaml
-  ssh -t ubuntu@turtlebot4 "sudo cp /tmp/oakd_pro.yaml '$oakd_remote_cfg' && rm -f /tmp/oakd_pro.yaml"
-
   # nav2_pi.yaml sets plugin_lib_names: [turtlebot4_bt_plugins] for the
   # rotate-first BT, loaded from the robot overlay (~/tb4_overlay_ws). Verify it
   # is present so bt_navigator can load the tree when 'tb4 onboard up' runs.

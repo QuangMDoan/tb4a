@@ -23,14 +23,14 @@ class YoloDetectorNode(Node):
     def __init__(self):
         super().__init__('yolo_detector_node')
 
-        self.declare_parameter('model_path', '/home/qd/turtlebot4_ws/yolov8n.pt')
+        self.declare_parameter('model_path', '/home/qd/turtlebot4_ws/models/traffic_signs.pt')
         self.declare_parameter('confidence_threshold', 0.6)
         self.declare_parameter('image_topic', '/oakd/rgb/preview/image_raw')
         self.declare_parameter('detection_topic', '/detections')
         self.declare_parameter('device', 'cpu')
         self.declare_parameter('publish_rate_limit', 15.0)
         self.declare_parameter('target_classes', [
-            'person', 'stop sign', 'chair', 'dog', 'cat', 'bicycle',
+            'stop sign', 'do not enter'
         ])
         self.declare_parameter('publish_visualisation', False)
         self.declare_parameter('visualisation_topic', '/detections/image')

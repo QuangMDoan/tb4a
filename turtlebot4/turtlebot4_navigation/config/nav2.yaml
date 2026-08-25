@@ -200,10 +200,15 @@ local_costmap:
         class_radii: [0.08, 0.5]
         persistent_classes: ['do not enter']
         persistent_frame: "map"
+        # 600 s: the fine-tuned detector has no false positives, so a 'do not
+        # enter' keep-out can safely persist long enough to hold the reroute for
+        # the whole run (was briefly 60 s to self-clear false latches).
         persistent_timeout: 600.0
-        # A stop sign only becomes a costmap obstacle (-> reroute) once the robot
-        # is within 1.5 m; farther than that it keeps the old plan.
-        persistent_react_distance: 1.5
+        # Latch the persistent keep-out as soon as the robot reacts to the sign.
+        # MUST exceed the BT stop distance (2.5 m): at 1.5 m the robot rerouted
+        # at 2.5 m without ever latching, so the keep-out cleared and the planner
+        # snapped back through the sign.
+        persistent_react_distance: 3.0
         # After a Nav2 recovery clears the costmap, don't let the live fusion
         # stream re-stamp transient obstacles for this long, so the robot can
         # move out of a spot a false detection had wedged it into.
@@ -250,8 +255,8 @@ global_costmap:
       robot_base_frame: base_link
       transform_tolerance: 0.5
       robot_radius: 0.18
-      # 0.0 (not the 0.7
-      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.17
+      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.18.
+      footprint_padding: 0.0
       resolution: 0.06
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "perception_layer", "inflation_layer"]
@@ -280,10 +285,15 @@ global_costmap:
         class_radii: [0.08, 0.5]
         persistent_classes: ['do not enter']
         persistent_frame: "map"
+        # 600 s: the fine-tuned detector has no false positives, so a 'do not
+        # enter' keep-out can safely persist long enough to hold the reroute for
+        # the whole run (was briefly 60 s to self-clear false latches).
         persistent_timeout: 600.0
-        # A stop sign only becomes a costmap obstacle (-> reroute) once the robot
-        # is within 1.5 m; farther than that it keeps the old plan.
-        persistent_react_distance: 1.5
+        # Latch the persistent keep-out as soon as the robot reacts to the sign.
+        # MUST exceed the BT stop distance (2.5 m): at 1.5 m the robot rerouted
+        # at 2.5 m without ever latching, so the keep-out cleared and the planner
+        # snapped back through the sign.
+        persistent_react_distance: 3.0
         # After a Nav2 recovery clears the costmap, don't let the live fusion
         # stream re-stamp transient obstacles for this long, so the robot can
         # move out of a spot a false detection had wedged it into.
