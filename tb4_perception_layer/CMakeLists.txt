@@ -17,6 +17,7 @@ find_package(behaviortree_cpp REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # ── Message generation ────────────────────────────────────────
 rosidl_generate_interfaces(${PROJECT_NAME}
@@ -45,6 +46,7 @@ ament_target_dependencies(perception_layer
   tf2
   tf2_ros
   geometry_msgs
+  std_srvs
 )
 
 # Link the generated message typesupport into the plugin library

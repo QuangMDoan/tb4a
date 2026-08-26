@@ -9,6 +9,7 @@
 #include "nav2_costmap_2d/layer.hpp"
 #include "nav2_costmap_2d/layered_costmap.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_srvs/srv/trigger.hpp"
 #include "tb4_perception_layer/msg/semantic_obstacle_array.hpp"
 
 namespace tb4_perception_layer
@@ -34,6 +35,11 @@ public:
 private:
   void obstacleCallback(
     const tb4_perception_layer::msg::SemanticObstacleArray::SharedPtr msg);
+
+  // Flush persistent_obstacles_ on demand (std_srvs/Trigger service).
+  void clearPersistentCallback(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
   struct CachedObstacle
   {
@@ -66,6 +72,11 @@ private:
   // Latched keep-out zones (e.g. stop signs) stored in persistent_frame_.
   // These survive loss of sight and costmap clearing.
   std::vector<CachedObstacle> persistent_obstacles_;
+  // Keep-outs just removed by the clear service, held one cycle so updateBounds
+  // can expand over them and force the master grid to drop the stamped cost.
+  std::vector<CachedObstacle> cleared_regions_;
+  bool have_cleared_regions_{false};
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clear_service_;
 
   // Parameters
   std::string semantic_topic_;

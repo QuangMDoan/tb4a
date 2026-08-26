@@ -39,6 +39,7 @@ Usage:
   tb4 nav2
   tb4 nav2 onboard
   tb4 nav2_diag
+  tb4 clear costmap
   tb4 deploy plugins
   tb4 deploy onboard [full]
   tb4 deploy fastdds
@@ -103,6 +104,7 @@ Examples:
   tb4 nav2
   tb4 nav2 onboard
   tb4 nav2_diag
+  tb4 clear costmap
   tb4 deploy plugins
   tb4 deploy onboard full
   tb4 deploy fastdds
@@ -261,6 +263,16 @@ login_cmd() {
 
 off_cmd() {
   ros2 service call /robot_power irobot_create_msgs/srv/RobotPower "{}"
+}
+
+clear_costmap_cmd() {
+  # Flush the PerceptionLayer persistent keep-outs (e.g. a latched DO NOT ENTER)
+  # from both costmaps on demand, without restarting Nav2.
+  echo "Clearing persistent keep-outs (local + global costmap)..."
+  ros2 service call /local_costmap/clear_persistent std_srvs/srv/Trigger "{}" \
+    || echo "  local_costmap: clear_persistent call failed (is onboard Nav2 up?)"
+  ros2 service call /global_costmap/clear_persistent std_srvs/srv/Trigger "{}" \
+    || echo "  global_costmap: clear_persistent call failed (is onboard Nav2 up?)"
 }
 
 localize_cmd() {
@@ -990,6 +1002,13 @@ case "${1:-}" in
   reverse_test)
     shift
     reverse_test_cmd "$@"
+    ;;
+  clear)
+    shift
+    case "${1:-}" in
+      costmap) shift; clear_costmap_cmd "$@" ;;
+      *) echo "Unknown clear subcommand: ${1:-}"; echo "Usage: tb4 clear costmap"; exit 1 ;;
+    esac
     ;;
   cat)
     shift

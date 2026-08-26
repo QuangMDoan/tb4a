@@ -98,6 +98,14 @@ void PerceptionLayer::onInitialize()
     semantic_topic_, rclcpp::SensorDataQoS(),
     std::bind(&PerceptionLayer::obstacleCallback, this, std::placeholders::_1));
 
+  // On-demand flush of the persistent keep-outs. The relative name resolves per
+  // costmap node: /local_costmap/clear_persistent and /global_costmap/clear_persistent.
+  clear_service_ = node->create_service<std_srvs::srv::Trigger>(
+    "clear_persistent",
+    std::bind(
+      &PerceptionLayer::clearPersistentCallback, this,
+      std::placeholders::_1, std::placeholders::_2));
+
   RCLCPP_INFO(
     node->get_logger(),
     "PerceptionLayer initialized — topic: %s, timeout: %.1fs, %zu class mappings",
@@ -235,6 +243,22 @@ void PerceptionLayer::updateBounds(
     }
     expand(obs, persistent_timeout_, true);
   }
+
+  // One-shot after a clear_persistent call: expand bounds over the removed
+  // keep-outs so the master grid refreshes and drops their stamped cost.
+  if (have_cleared_regions_) {
+    for (const auto & obs : cleared_regions_) {
+      double wx, wy;
+      if (transformPoint(obs.frame_id, global_frame, obs.x, obs.y, wx, wy)) {
+        *min_x = std::min(*min_x, wx - obs.radius);
+        *min_y = std::min(*min_y, wy - obs.radius);
+        *max_x = std::max(*max_x, wx + obs.radius);
+        *max_y = std::max(*max_y, wy + obs.radius);
+      }
+    }
+    cleared_regions_.clear();
+    have_cleared_regions_ = false;
+  }
 }
 
 void PerceptionLayer::updateCosts(
@@ -332,6 +356,38 @@ void PerceptionLayer::reset()
   // Note: persistent_obstacles_ are intentionally NOT cleared here so that
   // latched keep-out zones (e.g. stop signs) survive costmap resets/clears.
   current_ = false;
+}
+
+void PerceptionLayer::clearPersistentCallback(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  // Clear only 'do not enter' keep-outs; leave any other persistent class intact.
+  const std::string target = "do not enter";
+  std::vector<CachedObstacle> kept;
+  size_t cleared = 0;
+  for (auto & obs : persistent_obstacles_) {
+    if (obs.class_id == target) {
+      // Hold removed zones one cycle so updateBounds() can refresh their cells.
+      cleared_regions_.push_back(obs);
+      ++cleared;
+    } else {
+      kept.push_back(obs);
+    }
+  }
+  persistent_obstacles_.swap(kept);
+  if (cleared > 0) {have_cleared_regions_ = true;}
+  response->success = true;
+  response->message = (cleared > 0)
+    ? "Cleared " + std::to_string(cleared) + " 'do not enter' keep-out(s)"
+    : "No 'do not enter' keep-out to clear";
+  auto node = node_.lock();
+  if (node) {
+    RCLCPP_INFO(
+      node->get_logger(),
+      "PerceptionLayer: cleared %zu 'do not enter' keep-out(s) on request", cleared);
+  }
 }
 
 unsigned char PerceptionLayer::costForClass(const std::string & class_id) const
