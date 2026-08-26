@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  UserPC Fast DDS profile — mirrors the robot's fastdds_rpi.xml: transport
+  whitelist (this PC, 192.168.86.24) + async writer only. Discovery (SUPER_CLIENT
+  + server 192.168.86.39:11811) is set via env in ~/.bashrc (ROS_DISCOVERY_SERVER
+  + ROS_SUPER_CLIENT). Keep the whitelist == this PC's IP.
+-->
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+    <profiles>
+        <transport_descriptors>
+            <transport_descriptor>
+                <transport_id>custom_udp</transport_id>
+                <type>UDPv4</type>
+                <interfaceWhiteList>
+                    <address>127.0.0.1</address>
+                    <address>192.168.86.24</address>
+                </interfaceWhiteList>
+            </transport_descriptor>
+        </transport_descriptors>
+
+        <participant profile_name="userpc_default_profile" is_default_profile="true">
+            <rtps>
+                <userTransports>
+                    <transport_id>custom_udp</transport_id>
+                </userTransports>
+                <useBuiltinTransports>false</useBuiltinTransports>
+            </rtps>
+        </participant>
+
+        <data_writer profile_name="userpc_default_writer" is_default_profile="true">
+            <qos>
+                <publishMode>
+                    <kind>ASYNCHRONOUS</kind>
+                </publishMode>
+            </qos>
+        </data_writer>
+    </profiles>
+</dds>

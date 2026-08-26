@@ -2,9 +2,11 @@
 
 #include "turtlebot4_bt_plugins/is_goal_behind_condition.hpp"
 #include "turtlebot4_bt_plugins/rotate_angle_action.hpp"
+#include "turtlebot4_bt_plugins/random_selector.hpp"
 
 BT_REGISTER_NODES(factory)
 {
     factory.registerNodeType<turtlebot4_bt_plugins::IsGoalBehindCondition>("IsGoalBehind");
     factory.registerNodeType<turtlebot4_bt_plugins::RotateAngleAction>("RotateAngle");
+    factory.registerNodeType<turtlebot4_bt_plugins::RandomSelector>("RandomSelector");
 }

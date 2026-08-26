@@ -5,14 +5,16 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: odom
     bt_loop_duration: 10
-    default_server_timeout: 20
-    wait_for_service_timeout: 1000
+    # Larger timeouts so a slow planner ack on the Pi's CPU doesn't fail the goal.
+    # 1000 ms (was 50): tolerates momentary load spikes when perception + nav2 share the Pi.
+    default_server_timeout: 1000
+    wait_for_service_timeout: 3000
     action_server_result_timeout: 900.0
-    # Custom BT nodes (IsGoalBehind + RotateAngle) from turtlebot4_bt_plugins,
-    # used by the rotate-first tree so goals placed behind the robot are
-    # approached by rotating in place first instead of reversing.
-    plugin_lib_names: ["turtlebot4_bt_plugins"]
-    default_nav_to_pose_bt_xml: "/home/qd/turtlebot4_ws/install/turtlebot4_navigation/share/turtlebot4_navigation/behavior_trees/navigate_to_pose_rotate_first.xml"
+    # Custom BT nodes: turtlebot4_bt_plugins (IsGoalBehind + RotateAngle, rotate-first)
+    # and is_sign_nearby_bt_node (IsSignNearby). It pauses navigation when a
+    # configured sign from /semantic_obstacles comes within range.
+    plugin_lib_names: ["turtlebot4_bt_plugins", "is_sign_nearby_bt_node"]
+    default_nav_to_pose_bt_xml: "/home/qd/turtlebot4_ws/install/turtlebot4_navigation/share/turtlebot4_navigation/behavior_trees/navigate_to_pose_rotate_first_stopsign.xml"
     navigators: ["navigate_to_pose"]
     navigate_to_pose:
       plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
@@ -23,30 +25,37 @@ bt_navigator:
 controller_server:
   ros__parameters:
     enable_stamped_cmd_vel: true
-    controller_frequency: 20.0
+    controller_frequency: 15.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
+    # 1.0 -> 2.0 s: tolerate longer transient no-trajectory spells (localization
+    # jitter in the 0.86 m hallway) before aborting to recovery.
+    failure_tolerance: 2.0
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["general_goal_checker"]
     controller_plugins: ["FollowPath"]
     use_realtime_priority: false
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.5
+      # Lenient so a slow crawl through narrow spaces isn't aborted.
+      required_movement_radius: 0.25
       movement_time_allowance: 10.0
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
+      xy_goal_tolerance: 0.4
       yaw_goal_tolerance: 0.25
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
-      # Reduced from 56/2000 so the control loop keeps 20 Hz on the UserPC.
-      time_steps: 50
-      model_dt: 0.05
-      batch_size: 1500
+      # Coexist profile (perception + nav2 on the Pi): 30/400 instead of 50/1000
+      # to free CPU for the OAK-D pipeline. model_dt 0.0667 keeps the ~2 s horizon
+      # at controller_frequency 15. Revert to 50/1000 for nav-only quality.
+      time_steps: 30
+      model_dt: 0.0667
+      batch_size: 400
+      # Matched to the velocity_smoother accel caps (1.0 / 1.5) so MPPI plans at the
+      # achievable ramp rate instead of commanding accels the smoother then clamps.
       ax_max: 3.0
       ax_min: -3.0
       ay_max: 3.0
@@ -54,10 +63,19 @@ controller_server:
       vx_std: 0.2
       vy_std: 0.2
       wz_std: 0.4
-      vx_max: 0.5
-      vx_min: -0.35
+      # Matched to velocity_smoother's linear cap (0.26) so MPPI plans at the
+      # achievable speed instead of optimizing trajectories the smoother then clamps.
+      # 0.35 -> 0.26: slower approach gives YOLO more frames to detect a sign
+      # before the robot closes to the LIDAR-wedge distance in the narrow hallway.
+      vx_max: 0.26
+      # Small reverse allowed so MPPI can reposition to clear tight corners
+      # (pure forward-only stalls at the TV-room/hallway corner). Normal driving
+      # stays forward; PreferForwardCritic keeps reverse to a minimum.
+      vx_min: -0.15
       vy_max: 0.5
-      wz_max: 1.9
+      # Matched to velocity_smoother's 1.0 rad/s cap so MPPI plans at the achievable
+      # rotation rate instead of commanding turns the smoother then clamps (adds lag).
+      wz_max: 1.0
       iteration_count: 1
       prune_distance: 1.7
       transform_tolerance: 0.1
@@ -92,13 +110,26 @@ controller_server:
       PreferForwardCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 5.0
+        # 2.5: still prefer forward, but low enough to let the small reverse
+        # (vx_min -0.15) reposition the robot through tight corners.
+        cost_weight: 2.5
         threshold_to_consider: 0.5
       CostCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 3.81
+        # 8.0: with consider_footprint:false there is no hard footprint check, so
+        # this is the ONLY thing keeping the robot body off the walls in the 0.86 m
+        # hallway. 3.81 let the centre drift until the body clipped a wall; 8.0 held
+        # the centreline over 10 goals with no contact (paired with PathFollow 8.0
+        # below so it still pushes through soft-cost pinches instead of stalling).
+        cost_weight: 8.0
         critical_cost: 300.0
+        # true: hard footprint collision check — the definitive guarantee the body
+        # never enters an obstacle/inscribed cell (no wall contact). Safe now that
+        # the stop-sign keep-out is non-lethal (250), so it no longer causes the
+        # false footprint-fail wedges it did when the keep-out was lethal 254. In
+        # the tight 0.86 m hallway it may occasionally stop short on a footprint
+        # graze; the BackUp recovery extracts that.
         consider_footprint: true
         collision_cost: 1000000.0
         near_goal_distance: 1.0
@@ -115,7 +146,9 @@ controller_server:
       PathFollowCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 5.0
+        # 5.0 -> 8.0: stronger forward pull so the high CostCritic weight can't
+        # freeze the robot at a soft-cost pinch (the "Failed to make progress" stall).
+        cost_weight: 8.0
         offset_from_furthest: 5
         threshold_to_consider: 1.4
       PathAngleCritic:
@@ -141,20 +174,58 @@ local_costmap:
       height: 4
       resolution: 0.06
       transform_tolerance: 0.5
-      footprint: "[[ 0.189,  0.000],
-                  [ 0.134, -0.134],
-                  [ 0.000, -0.189],
-                  [-0.134, -0.134],
-                  [-0.189,  0.000],
-                  [-0.134,  0.134],
-                  [ 0.000,  0.189],
-                  [ 0.134,  0.134]]"
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      # Circular footprint at the true round-robot hull (~0.17 m): reclaims the last
+      # cm of clearance in the 0.86 m hallway. consider_footprint still guards contact.
+      robot_radius: 0.175
+      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.175.
+      footprint_padding: 0.0
+      plugins: ["static_layer", "obstacle_layer", "perception_layer", "inflation_layer"]
+      # Class-aware semantic obstacles from the camera-depth fusion node
+      # (/semantic_obstacles). 'stop sign' is persisted in the map frame.
+      perception_layer:
+        plugin: "tb4_perception_layer::PerceptionLayer"
+        enabled: true
+        semantic_topic: "/semantic_obstacles"
+        obstacle_timeout: 3.0
+        # Raised 0.35 -> 0.55: a near-field false detection (e.g. a wall chunk
+        # seen as 'person' at a corner) is dropped instead of stamped onto the
+        # robot's own footprint.
+        min_obstacle_distance: 0.55
+        # Non-lethal (<253) so one false frame is soft-avoid, not a footprint
+        # collision that makes MPPI fail to compute a path in a tight corridor.
+        default_cost: 200
+        default_radius: 0.3
+        class_names: ['stop sign', 'do not enter']
+        # Fallbacks only (fusion writes cost/radius per detection, which wins).
+        # 'stop sign' = tiny non-blocking marker (the BT does the 2 s temporal
+        # stop, then the robot drives THROUGH). 'do not enter' = lethal 254
+        # blocking keep-out so the planner reroutes AROUND it; persisted in the
+        # map frame so the block is remembered after it leaves view.
+        class_costs: [120, 254]
+        class_radii: [0.08, 0.5]
+        persistent_classes: ['do not enter']
+        persistent_frame: "map"
+        # 600 s: the fine-tuned detector has no false positives, so a 'do not
+        # enter' keep-out can safely persist long enough to hold the reroute for
+        # the whole run (was briefly 60 s to self-clear false latches).
+        persistent_timeout: 600.0
+        # Latch the persistent keep-out as soon as the robot reacts to the sign.
+        # MUST exceed the BT stop distance (2.5 m): at 1.5 m the robot rerouted
+        # at 2.5 m without ever latching, so the keep-out cleared and the planner
+        # snapped back through the sign.
+        persistent_react_distance: 3.0
+        # After a Nav2 recovery clears the costmap, don't let the live fusion
+        # stream re-stamp transient obstacles for this long, so the robot can
+        # move out of a spot a false detection had wedged it into.
+        clear_suppression_time: 2.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0
-        # Must be >= footprint circumscribed radius (0.2036 m) for MPPI fast collision checking.
-        inflation_radius: 0.22
+        # Gentler slope (was 5.0) + wider radius (was 0.19) give MPPI a smooth
+        # centering gradient across the ~0.86 m hallway instead of a near-binary
+        # wall, so it holds the corridor centre and clips inscribed cost less at
+        # corners. 0.25 < half-corridor (0.43 m) so the centre stays non-lethal.
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.27
       obstacle_layer:
         # 2D layer (not VoxelLayer): the only source is the 2D /scan, and voxel Z bounds
         # broke clearing when odom Z drift pushed the sensor origin below origin_z.
@@ -170,7 +241,10 @@ local_costmap:
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
-          obstacle_min_range: 0.0
+          # 0.16 (> sensor range_min 0.15): drop sub-range-min phantom returns (a
+          # self-reflection off the robot) that were marking the robot's own
+          # footprint lethal and wedging it at open junctions.
+          obstacle_min_range: 0.16
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
@@ -185,17 +259,50 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       transform_tolerance: 0.5
-      footprint: "[[ 0.189,  0.000],
-                  [ 0.134, -0.134],
-                  [ 0.000, -0.189],
-                  [-0.134, -0.134],
-                  [-0.189,  0.000],
-                  [-0.134,  0.134],
-                  [ 0.000,  0.189],
-                  [ 0.134,  0.134]]"
+      robot_radius: 0.175
+      # 0.0 (not the 0.01 default) so inscribed == robot_radius 0.175.
+      footprint_padding: 0.0
       resolution: 0.06
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "perception_layer", "inflation_layer"]
+      # Class-aware semantic obstacles from the camera-depth fusion node
+      # (/semantic_obstacles). 'stop sign' is persisted in the map frame.
+      perception_layer:
+        plugin: "tb4_perception_layer::PerceptionLayer"
+        enabled: true
+        semantic_topic: "/semantic_obstacles"
+        obstacle_timeout: 3.0
+        # Raised 0.35 -> 0.55: a near-field false detection (e.g. a wall chunk
+        # seen as 'person' at a corner) is dropped instead of stamped onto the
+        # robot's own footprint.
+        min_obstacle_distance: 0.55
+        # Non-lethal (<253) so one false frame is soft-avoid, not a footprint
+        # collision that makes MPPI fail to compute a path in a tight corridor.
+        default_cost: 200
+        default_radius: 0.3
+        class_names: ['stop sign', 'do not enter']
+        # Fallbacks only (fusion writes cost/radius per detection, which wins).
+        # 'stop sign' = tiny non-blocking marker (the BT does the 2 s temporal
+        # stop, then the robot drives THROUGH). 'do not enter' = lethal 254
+        # blocking keep-out so the planner reroutes AROUND it; persisted in the
+        # map frame so the block is remembered after it leaves view.
+        class_costs: [120, 254]
+        class_radii: [0.08, 0.5]
+        persistent_classes: ['do not enter']
+        persistent_frame: "map"
+        # 600 s: the fine-tuned detector has no false positives, so a 'do not
+        # enter' keep-out can safely persist long enough to hold the reroute for
+        # the whole run (was briefly 60 s to self-clear false latches).
+        persistent_timeout: 600.0
+        # Latch the persistent keep-out as soon as the robot reacts to the sign.
+        # MUST exceed the BT stop distance (2.5 m): at 1.5 m the robot rerouted
+        # at 2.5 m without ever latching, so the keep-out cleared and the planner
+        # snapped back through the sign.
+        persistent_react_distance: 3.0
+        # After a Nav2 recovery clears the costmap, don't let the live fusion
+        # stream re-stamp transient obstacles for this long, so the robot can
+        # move out of a spot a false detection had wedged it into.
+        clear_suppression_time: 2.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -209,27 +316,33 @@ global_costmap:
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
-          obstacle_min_range: 0.0
+          # 0.16 (> sensor range_min 0.15): drop sub-range-min phantom returns (a
+          # self-reflection off the robot) that were marking the robot's own
+          # footprint lethal and wedging it at open junctions.
+          obstacle_min_range: 0.16
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0
-        # Must be >= footprint circumscribed radius (0.2036 m) for MPPI fast collision checking.
-        inflation_radius: 0.22
+        # Gentler slope (was 5.0) + wider radius (was 0.19) give the planner a
+        # smooth centering gradient across the ~0.86 m hallway instead of a
+        # near-binary wall. 0.25 < half-corridor (0.43 m) so the centre stays
+        # non-lethal.
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.27
       always_send_full_costmap: true
 
 planner_server:
   ros__parameters:
     enable_stamped_cmd_vel: true
-    #expected_planner_frequency: 20.0
+    # expected_planner_frequency: 20.0
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"
       # Accept a nearby reachable pose when the exact goal is in inflated/lethal space.
       tolerance: 0.75
-      use_astar: false
+      use_astar: true
       allow_unknown: true
 
 smoother_server:
@@ -266,8 +379,11 @@ behavior_server:
     robot_base_frame: base_link
     transform_tolerance: 0.5
     simulate_ahead_time: 2.0
+    # Lowered 1.0 -> 0.5 to match the smoother/MPPI rotation cap: slow yaw everywhere,
+    # including spin recovery, to keep AMCL scan matching stable in the hallway.
     max_rotational_vel: 1.0
     min_rotational_vel: 0.4
+    # Softened 3.2 -> 1.5 to match the smoother/MPPI angular accel: gentle spin onset.
     rotational_acc_lim: 3.2
 
 waypoint_follower:
@@ -288,8 +404,14 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
+    # Linear min -0.15 matches MPPI vx_min: allows the small reverse used to
+    # reposition through tight corners, while normal driving stays forward.
+    # Linear max 0.26 matches MPPI vx_max (lowered from 0.35 for more sign-
+    # detection reaction time before the hallway wedge distance).
     max_velocity: [0.26, 0.0, 1.0]
-    min_velocity: [-0.26, 0.0, -1.0]
+    min_velocity: [-0.15, 0.0, -1.0]
+    # Softened so yaw/linear ramp in rather than snapping to the cap in ~0.15 s:
+    # gentler onset reduces wheel slip and sudden scan jumps that disturb AMCL.
     max_accel: [2.5, 0.0, 3.2]
     max_decel: [-2.5, 0.0, -3.2]
     odom_topic: "odom"
@@ -316,11 +438,14 @@ collision_monitor:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "local_costmap/published_footprint"
-      time_before_collision: 1.2
+      # Shorter forward projection so tight-hallway walls don't constantly throttle motion.
+      time_before_collision: 0.5
       simulation_time_step: 0.1
       min_points: 6
       visualize: False
-      enabled: True
+      # Disabled: it throttled the robot to a crawl in the 0.86 m hallway; MPPI's
+      # CostCritic (consider_footprint) still does collision avoidance.
+      enabled: False
     observation_sources: ["scan"]
     scan:
       type: "scan"

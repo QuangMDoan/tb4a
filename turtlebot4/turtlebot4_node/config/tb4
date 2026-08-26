@@ -32,7 +32,6 @@ Usage:
   tb4 off
   tb4 localize [map_yaml]
   tb4 localize onboard
-  tb4 setpose dock
   tb4 map
   tb4 map save
   tb4 joy
@@ -40,8 +39,10 @@ Usage:
   tb4 nav2
   tb4 nav2 onboard
   tb4 nav2_diag
+  tb4 clear costmap
   tb4 deploy plugins
   tb4 deploy onboard [full]
+  tb4 deploy fastdds
   tb4 onboard up
   tb4 onboard down
   tb4 onboard logs [errors|list|<node>]
@@ -56,6 +57,8 @@ Usage:
   tb4 bbox viz
   tb4 bbox yolo-viz
   tb4 bbox fusion-viz
+  tb4 oakd tb2pc
+  tb4 oakd pc2pi
   tb4 rgb_cam_rate
   tb4 bbox_rate
   tb4 depth_cam_rate
@@ -70,6 +73,7 @@ Usage:
   tb4 cat <remote_file_path>
   tb4 scp
   tb4 copyme
+  tb4 copy bashrc
   tb4 square [side_m] [speed_mps]
 
 Examples:
@@ -93,7 +97,6 @@ Examples:
   tb4 off
   tb4 localize
   tb4 localize onboard
-  tb4 setpose dock
   tb4 map
   tb4 map save
   tb4 joy
@@ -101,8 +104,10 @@ Examples:
   tb4 nav2
   tb4 nav2 onboard
   tb4 nav2_diag
+  tb4 clear costmap
   tb4 deploy plugins
   tb4 deploy onboard full
+  tb4 deploy fastdds
   tb4 onboard up
   tb4 onboard down
   tb4 onboard logs [errors|list|<node>]
@@ -117,6 +122,8 @@ Examples:
   tb4 bbox viz
   tb4 bbox yolo-viz
   tb4 bbox fusion-viz
+  tb4 oakd tb2pc
+  tb4 oakd pc2pi
   tb4 rgb_cam_rate
   tb4 bbox_rate
   tb4 depth_cam_rate
@@ -131,6 +138,7 @@ Examples:
   tb4 cat /opt/ros/jazzy/share/turtlebot4_bringup/config/oakd_pro.yaml
   tb4 scp
   tb4 copyme
+  tb4 copy bashrc
 
 Setup: 
   mkdir -p ~/bin
@@ -257,33 +265,19 @@ off_cmd() {
   ros2 service call /robot_power irobot_create_msgs/srv/RobotPower "{}"
 }
 
+clear_costmap_cmd() {
+  # Flush the PerceptionLayer persistent keep-outs (e.g. a latched DO NOT ENTER)
+  # from both costmaps on demand, without restarting Nav2.
+  echo "Clearing persistent keep-outs (local + global costmap)..."
+  ros2 service call /local_costmap/clear_persistent std_srvs/srv/Trigger "{}" \
+    || echo "  local_costmap: clear_persistent call failed (is onboard Nav2 up?)"
+  ros2 service call /global_costmap/clear_persistent std_srvs/srv/Trigger "{}" \
+    || echo "  global_costmap: clear_persistent call failed (is onboard Nav2 up?)"
+}
+
 localize_cmd() {
   local map="${1:-$HOME/turtlebot4_ws/map_101.yaml}"
   ros2 launch turtlebot4_navigation localization.launch.py map:="$map"
-}
-
-setpose_cmd() {
-  # Publish an initial pose to /initialpose, same effect as RViz "2D Pose
-  # Estimate". AMCL subscribes and seeds its particle filter with this pose.
-  local target="${1:-dock}"
-  local x y yaw
-  case "$target" in
-    dock)
-      # Robot's pose when docked (from amcl "Setting pose" log): x y yaw(rad).
-      x=-0.382; y=-2.046; yaw=3.137
-      ;;
-    *)
-      echo "Usage: tb4 setpose dock"
-      exit 1
-      ;;
-  esac
-  need_cmd python3
-  local qz qw
-  qz="$(python3 -c "import math;print(math.sin($yaw/2.0))")"
-  qw="$(python3 -c "import math;print(math.cos($yaw/2.0))")"
-  echo "Setting initial pose ($target): x=$x y=$y yaw=$yaw"
-  ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \
-    "{header: {frame_id: 'map'}, pose: {pose: {position: {x: $x, y: $y, z: 0.0}, orientation: {z: $qz, w: $qw}}, covariance: [0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891945200942]}}"
 }
 
 map_cmd() {
@@ -327,17 +321,15 @@ nav2_cmd() {
 # Robot paths: overlay ws = ~/tb4_overlay_ws (bt plugins), config = ~/tb4_cfg.
 
 deploy_plugins_cmd() {
-  # Nav2 runs onboard the robot (Pi). It must load two custom overlay packages:
-  #   - turtlebot4_bt_plugins : behavior-tree action/condition nodes
-  #   - tb4_perception_layer  : semantic costmap layer + SemanticObstacle msgs
-  # The perception layer is enabled in nav2.yaml and subscribes to
-  # /semantic_obstacles published by the fusion node on the UserPC, so BOTH the
-  # plugin .so AND the message typesupport must be built/installed on the Pi.
+  # Nav2 runs onboard the robot (Pi). It loads custom overlay packages:
+  #   - turtlebot4_bt_plugins : IsGoalBehind + RotateAngle BT nodes (rotate-first).
+  #   - tb4_perception_layer  : PerceptionLayer costmap plugin + IsSignNearby
+  #     BT node + SemanticObstacleArray msgs (stop-sign / semantic obstacles).
   local pkgs=(
     "$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_bt_plugins"
     "$HOME/turtlebot4_ws/src/tb4_perception_layer"
   )
-  echo "Deploying Nav2 overlay packages to robot (bt plugins + perception layer)..."
+  echo "Deploying Nav2 overlay package to robot (bt plugins)..."
   ssh ubuntu@turtlebot4 'mkdir -p ~/tb4_overlay_ws/src'
   local src name
   for src in "${pkgs[@]}"; do
@@ -379,23 +371,32 @@ deploy_onboard_cmd() {
 
   rm -f "$tmp_nav2"
 
-  # nav2.yaml enables tb4_perception_layer, which onboard nav2 loads from the
-  # robot overlay (~/tb4_overlay_ws). Verify it is present so the costmap does
-  # not fail to bring up when 'tb4 onboard up' runs.
-  echo "Verifying perception layer overlay on robot..."
-  if ssh ubuntu@turtlebot4 'test -d ~/tb4_overlay_ws/install/tb4_perception_layer'; then
-    echo "  OK: tb4_perception_layer is built in the robot overlay."
+  # nav2_pi.yaml sets plugin_lib_names: [turtlebot4_bt_plugins] for the
+  # rotate-first BT, loaded from the robot overlay (~/tb4_overlay_ws). Verify it
+  # is present so bt_navigator can load the tree when 'tb4 onboard up' runs.
+  echo "Verifying bt plugins overlay on robot..."
+  if ssh ubuntu@turtlebot4 'test -d ~/tb4_overlay_ws/install/turtlebot4_bt_plugins'; then
+    echo "  OK: turtlebot4_bt_plugins is built in the robot overlay."
   else
-    echo "  WARN: tb4_perception_layer is NOT built on the robot overlay."
-    echo "        nav2.yaml enables perception_layer, so onboard nav2 must load it."
+    echo "  WARN: turtlebot4_bt_plugins is NOT built on the robot overlay."
+    echo "        nav2_pi.yaml needs it for the rotate-first tree."
     echo "        Run 'tb4 deploy plugins' before 'tb4 onboard up'."
   fi
 
   echo
-  echo "Done. Onboard Nav2 will subscribe to /semantic_obstacles."
-  echo "Perception runs on the UserPC:  tb4 yolo   and   tb4 fusion"
-  echo "Then start navigation onboard:  tb4 onboard up"
+  echo "Done. Start navigation onboard:  tb4 onboard up"
   echo "(RViz on the UserPC: tb4 viz)"
+}
+
+deploy_fastdds_cmd() {
+  # Push the robot's Fast DDS profile (async data_writer added, so lifecycle
+  # change_state responses don't time out under Nav2 bringup load) to the Pi.
+  # /etc is root-owned: stage in /tmp then sudo-install, like the oakd config.
+  local local_xml="$HOME/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/fastdds_rpi.xml"
+  local remote_xml="/etc/turtlebot4/fastdds_rpi.xml"
+  echo "Copying fastdds_rpi.xml from UserPC -> robot:$remote_xml"
+  scp "$local_xml" ubuntu@turtlebot4:/tmp/fastdds_rpi.xml
+  ssh -t ubuntu@turtlebot4 "sudo cp '$remote_xml' '$remote_xml.bak' 2>/dev/null; sudo cp /tmp/fastdds_rpi.xml '$remote_xml' && rm -f /tmp/fastdds_rpi.xml && echo 'Installed. Reload DDS with:  tb4 restart'"
 }
 
 localize_onboard_cmd() {
@@ -467,9 +468,20 @@ wait_for_lifecycle_node() {
 set_lifecycle_state() {
   local node="$1"
   local state="$2"
+  local target_label=""
+  case "$state" in
+    configure|deactivate) target_label="inactive" ;;
+    activate)             target_label="active" ;;
+  esac
   local attempt
   for attempt in 1 2 3 4 5; do
     if timeout 20 ros2 lifecycle set "$node" "$state"; then
+      return 0
+    fi
+    # On a loaded Pi the change_state response can time out even though the
+    # transition succeeded; accept it if the node is already in the target state.
+    if [ -n "$target_label" ] && timeout 10 ros2 lifecycle get "$node" 2>/dev/null | grep -q "$target_label"; then
+      echo "[onboard up] $node already $target_label (set response was lost); continuing."
       return 0
     fi
     echo "[onboard up] WARN: failed to set $node -> $state (attempt $attempt/5)."
@@ -624,6 +636,30 @@ yolo_cmd() {
   fi
 }
 
+oakd_cmd() {
+  local sub="${1:-}"
+  local remote_cfg="/opt/ros/jazzy/share/turtlebot4_bringup/config/oakd_pro.yaml"
+  local local_dir="$HOME/turtlebot4_ws/src/tb4_perception/config"
+  case "$sub" in
+    tb2pc)
+      echo "Copying oakd_pro.yaml from robot -> $local_dir/"
+      scp "ubuntu@turtlebot4:$remote_cfg" "$local_dir/"
+      ;;
+    pc2pi)
+      # $remote_cfg is under /opt (root-owned); stage in /tmp then sudo-install.
+      echo "Copying oakd_pro.yaml from UserPC -> robot:$remote_cfg"
+      scp "$local_dir/oakd_pro.yaml" ubuntu@turtlebot4:/tmp/oakd_pro.yaml
+      ssh -t ubuntu@turtlebot4 "sudo cp /tmp/oakd_pro.yaml '$remote_cfg' && rm -f /tmp/oakd_pro.yaml"
+      echo "Done. Restart the camera to apply:  tb4 restart"
+      ;;
+    *)
+      echo "Unknown oakd subcommand: ${sub:-}"
+      echo "Usage: tb4 oakd tb2pc|pc2pi"
+      exit 1
+      ;;
+  esac
+}
+
 fusion_cmd() {
   local params_file="$HOME/turtlebot4_ws/src/tb4_perception_integration/config/fusion_params.yaml"
   if [ "${1:-}" = "viz" ]; then
@@ -671,7 +707,7 @@ bbox_cmd() {
 }
 
 rgb_cam_rate_cmd() {
-  timeout 8 ros2 topic hz /oakd/rgb/preview/image_raw --window 10
+  timeout 8 ros2 topic hz /oakd/rgb/preview/image_raw/compressed --window 10
 }
 
 bbox_rate_cmd() {
@@ -735,6 +771,11 @@ scp_cmd() {
 copyme_cmd() {
   cp "$HOME/bin/tb4" /home/qd/turtlebot4_ws/src/turtlebot4/turtlebot4_node/config/tb4
   scp "$HOME/bin/tb4" ubuntu@turtlebot4:/home/ubuntu/bin/tb4
+}
+
+copy_bashrc_cmd() {
+  cp "$HOME/.bashrc" /home/qd/turtlebot4_ws/src/turtlebot4/turtlebot4_navigation/config/bashrc
+  echo "Copied ~/.bashrc -> config/bashrc"
 }
 
 square_cmd() {
@@ -827,10 +868,6 @@ case "${1:-}" in
       *) localize_cmd "$@" ;;
     esac
     ;;
-  setpose)
-    shift
-    setpose_cmd "$@"
-    ;;
   map)
     shift
     case "${1:-}" in
@@ -872,7 +909,8 @@ case "${1:-}" in
     case "${1:-}" in
       plugins) shift; deploy_plugins_cmd "$@" ;;
       onboard) shift; deploy_onboard_cmd "$@" ;;
-      *) echo "Unknown deploy subcommand: ${1:-}"; echo "Usage: tb4 deploy plugins|onboard [full]"; exit 1 ;;
+      fastdds) shift; deploy_fastdds_cmd "$@" ;;
+      *) echo "Unknown deploy subcommand: ${1:-}"; echo "Usage: tb4 deploy plugins|onboard [full]|fastdds"; exit 1 ;;
     esac
     ;;
   onboard)
@@ -916,6 +954,10 @@ case "${1:-}" in
   bbox)
     shift
     bbox_cmd "$@"
+    ;;
+  oakd)
+    shift
+    oakd_cmd "$@"
     ;;
   rgb_cam_rate)
     shift
@@ -961,6 +1003,13 @@ case "${1:-}" in
     shift
     reverse_test_cmd "$@"
     ;;
+  clear)
+    shift
+    case "${1:-}" in
+      costmap) shift; clear_costmap_cmd "$@" ;;
+      *) echo "Unknown clear subcommand: ${1:-}"; echo "Usage: tb4 clear costmap"; exit 1 ;;
+    esac
+    ;;
   cat)
     shift
     cat_cmd "$@"
@@ -972,6 +1021,13 @@ case "${1:-}" in
   copyme)
     shift
     copyme_cmd "$@"
+    ;;
+  copy)
+    shift
+    case "${1:-}" in
+      bashrc) copy_bashrc_cmd "$@" ;;
+      *) echo "Unknown copy subcommand: ${1:-}"; echo "Usage: tb4 copy bashrc"; exit 1 ;;
+    esac
     ;;
   square)
     shift

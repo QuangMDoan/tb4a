@@ -1,0 +1,11 @@
+<library path="perception_layer">
+  <class name="tb4_perception_layer::PerceptionLayer"
+         type="tb4_perception_layer::PerceptionLayer"
+         base_class_type="nav2_costmap_2d::Layer">
+    <description>
+      Semantic perception costmap layer that stamps class-aware obstacle costs
+      from SemanticObstacleArray messages with temporal decay.
+    </description>
+  </class>
+</library>
+ 
