@@ -3,7 +3,10 @@
     camera:
       i_enable_imu: false
       i_enable_ir: false
-      i_floodlight_brightness: 0
+      # IR (850nm) flood LED: aids STEREO/DEPTH in low light (the fusion 3D
+      # localization). RGB has an IR-cut filter, so this does NOT brighten the
+      # RGB image YOLO uses — room lighting remains the fix for RGB detection.
+      i_floodlight_brightness: 1000
       i_laser_dot_brightness: 100
       i_nn_type: none
       i_pipeline_type: RGBD

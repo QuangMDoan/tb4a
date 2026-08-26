@@ -707,7 +707,7 @@ bbox_cmd() {
 }
 
 rgb_cam_rate_cmd() {
-  timeout 8 ros2 topic hz /oakd/rgb/preview/image_raw --window 10
+  timeout 8 ros2 topic hz /oakd/rgb/preview/image_raw/compressed --window 10
 }
 
 bbox_rate_cmd() {

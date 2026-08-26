@@ -18,29 +18,10 @@ Pipeline:
   9. Temporal tracking with EMA position smoothing
   10. Publish SemanticObstacleArray for confirmed tracks + debug MarkerArray
 
-Quick Test:
-    Terminal 1  tb4 yolo
-    Terminal 2: tb4 fusion viz
-    Terminal 3: ros2 topic echo /semantic_obstacles      
-    Terminal 4: tb4 viz
-
-+──────────────────────────────────────────────────────────────────────────+
-| Launch fusion BEFORE nav2, so discovery settles before navigation starts |
-+──────────────────────────────────────────────────────────────────────────+
-Full Test:
-    Terminal 1: tb4 localize
-    Terminal 2: tb4 yolo
-    Terminal 3: tb4 fusion          ← start early, before nav2
-    Terminal 4: tb4 viz
-    Terminal 5: tb4 nav2            ← start last
-    
-Perf Test:
-    Terminal 1  tb4 yolo 
-    Terminal 2: tb4 fusion
-    Terminal 3: tb4 bbox_rate         (i.e. ros2 topic hz /detections )
-    Terminal 4: tb4 depth_cam_rate    (i.e. ros2 topic hz /oakd/stereo/image_raw)
-    Terminal 5: tb4 pointcloud_topic  (i.e. ros2 topic hz /oakd/stereo/points)
-    Terminal 6: tb4 obstacles         (i.e. ros2 topic hz /semantic_obstacles)    
+Test:
+    Terminal 1: tb4 onboard up
+    Terminal 2: tb4 bbox yolo-viz
+    Terminal 3: tb4 viz    
 """
 
 import numpy as np

@@ -63,9 +63,11 @@ controller_server:
       vx_std: 0.2
       vy_std: 0.2
       wz_std: 0.4
-      # Matched to velocity_smoother's linear caps (0.35 / -0.35) so MPPI plans at the
+      # Matched to velocity_smoother's linear cap (0.26) so MPPI plans at the
       # achievable speed instead of optimizing trajectories the smoother then clamps.
-      vx_max: 0.35
+      # 0.35 -> 0.26: slower approach gives YOLO more frames to detect a sign
+      # before the robot closes to the LIDAR-wedge distance in the narrow hallway.
+      vx_max: 0.26
       # Small reverse allowed so MPPI can reposition to clear tight corners
       # (pure forward-only stalls at the TV-room/hallway corner). Normal driving
       # stays forward; PreferForwardCritic keeps reverse to a minimum.
@@ -404,7 +406,9 @@ velocity_smoother:
     feedback: "OPEN_LOOP"
     # Linear min -0.15 matches MPPI vx_min: allows the small reverse used to
     # reposition through tight corners, while normal driving stays forward.
-    max_velocity: [0.35, 0.0, 1.0]
+    # Linear max 0.26 matches MPPI vx_max (lowered from 0.35 for more sign-
+    # detection reaction time before the hallway wedge distance).
+    max_velocity: [0.26, 0.0, 1.0]
     min_velocity: [-0.15, 0.0, -1.0]
     # Softened so yaw/linear ramp in rather than snapping to the cap in ~0.15 s:
     # gentler onset reduces wheel slip and sudden scan jumps that disturb AMCL.
