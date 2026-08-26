@@ -12,6 +12,24 @@ retaining the full LiDAR costmap for geometric obstacle avoidance.
 
 ---
 
+## Demo
+
+Screencast of the robot stopping at a STOP sign and rerouting around a
+DO NOT ENTER sign:
+
+<video src="https://github.com/QuangMDoan/tb4a/raw/main/screencast.webm" poster="https://github.com/QuangMDoan/tb4a/raw/main/screencast_poster.png" controls width="720">
+  Your browser does not support the video tag.
+  Watch it here: https://github.com/QuangMDoan/tb4a/raw/main/screencast.webm
+</video>
+
+On renderers that strip the video player, click the thumbnail to watch:
+
+[![Watch the demo](screencast_poster.png)](https://github.com/QuangMDoan/tb4a/raw/main/screencast.webm)
+
+If the inline player does not load, [download / watch `screencast.webm`](screencast.webm).
+
+---
+
 ## Package Overview
 
 | Package | Language | Role |
