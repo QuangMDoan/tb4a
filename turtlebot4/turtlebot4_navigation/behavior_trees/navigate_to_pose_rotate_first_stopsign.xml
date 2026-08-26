@@ -28,10 +28,13 @@
                 <Fallback name="StopSignGate">
                     <Inverter>
                         <!-- 2.5 m: the perception keep-out (r=0.5 + inflation) routes the
-                             robot ~2 m wide of the sign, so a 1.5 m trigger was never reached. -->
-                        <IsSignNearby distance_threshold="2.5" semantic_topic="/semantic_obstacles" global_frame="map" rearm_clear_time="1.5"/>
+                             robot ~2 m wide of the sign, so a 1.5 m trigger was never reached.
+                             trigger_classes="stop sign": the 7 s pause is for STOP signs only.
+                             DO NOT ENTER skips this timed stop and reroutes via its lethal
+                             persistent keep-out (independent of this BT gate). -->
+                        <IsSignNearby distance_threshold="2.5" semantic_topic="/semantic_obstacles" global_frame="map" rearm_clear_time="1.5" trigger_classes="stop sign"/>
                     </Inverter>
-                    <Wait wait_duration="2.0"/>
+                    <Wait wait_duration="7.0"/>
                 </Fallback>
                 <RecoveryNode number_of_retries="6" name="NavigateRecovery">
                     <PipelineSequence name="NavigateWithReplanning">
